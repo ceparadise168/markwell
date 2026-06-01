@@ -170,24 +170,42 @@ def test_one_row_per_bookmark_despite_duplicate_chapter_row(tmp_path):
     assert [h.text for h in books[0].highlights] == ["Only once"]
 
 
-def test_date_utc_converted_to_local(tmp_path, monkeypatch):
-    # Force a known local timezone (UTC+8) so the assertion is deterministic.
+def test_date_utc_converted_to_local(tmp_path):
+    """DateCreated is stored UTC; the exported date is the machine's LOCAL date."""
+    import datetime as dt
+    import os
     import time
-    monkeypatch.setenv("TZ", "Asia/Taipei")
-    time.tzset()
     db = tmp_path / "KoboReader.sqlite"
     _build(
         db,
         content=[("vol-1", "Book One", "Author A", 6, None),
                  ("ch-a", None, None, 9, 1)],
         bookmarks=[
-            # 23:30 UTC on 2024-03-17 is 07:30 local NEXT day in UTC+8
             ("b1", "vol-1", "ch-a", "Late night highlight", None,
-             "2024-03-17T23:30:00.000", 0.1, 5, "false"),
+             "2024-03-17T23:30:00.000", 0.1, 5, "false"),  # 23:30 UTC
         ],
     )
-    books = read_books(db)
-    assert books[0].highlights[0].date == "2024-03-18"
+    # Portable (every OS): the exported date must equal that instant localized to
+    # this machine — proving the value is parsed AS UTC and converted, not sliced.
+    expected = (dt.datetime(2024, 3, 17, 23, 30, tzinfo=dt.timezone.utc)
+                .astimezone().date().isoformat())
+    assert read_books(db)[0].highlights[0].date == expected
+
+    # Deterministic UTC+8 rollover where we can pin a non-UTC zone (POSIX only):
+    # 23:30 UTC is 07:30 the NEXT day in UTC+8. time.tzset() is absent on Windows.
+    if not hasattr(time, "tzset"):
+        return
+    saved = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = "Asia/Taipei"
+        time.tzset()
+        assert read_books(db)[0].highlights[0].date == "2024-03-18"
+    finally:
+        if saved is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = saved
+        time.tzset()
 
 
 def test_bad_date_yields_empty_string(tmp_path):
