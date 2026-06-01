@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import re
 
-from ..model import Book
-
 _EN_DASH = "–"
 
 
