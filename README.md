@@ -136,6 +136,11 @@ major (`markwell/1`) and you can rely on every documented field staying put.
   firmware update changes the schema, please open an issue.
 - Note (annotation) support reads `Bookmark.Annotation`; if you write notes on
   highlights, they appear under each highlight.
+- **Exported text is verbatim and untrusted.** Highlights and notes are reproduced
+  exactly as written, so treat the Markdown/JSON as *data*, not trusted markup — a
+  value beginning with `=`, `+`, `-`, or `@` can be read as a formula if you import
+  it into a spreadsheet/CSV, so sanitize on import if that matters. See
+  [SECURITY.md](SECURITY.md).
 
 ## Development
 

@@ -14,6 +14,11 @@ Markwell is a local, **offline, read-only** tool:
   `backups/`, and writes exports to `output/`, all on your local filesystem.
 - **Zero runtime dependencies.** Markwell uses only the Python standard library,
   so there is no third-party supply chain to trust at runtime.
+- **Exported content is verbatim and untrusted.** Highlight/note text and book
+  metadata are reproduced exactly as they appear in the book. Filenames are
+  sanitized and JSON is properly escaped, but a value beginning with `=`, `+`,
+  `-`, or `@` can be interpreted as a formula by spreadsheet/CSV importers — treat
+  exports as data and sanitize on import if you feed them into one.
 
 The `backups/` and `output/` directories may contain personal reading data.
 Treat them as you would any private notes; the project's `.gitignore` excludes
