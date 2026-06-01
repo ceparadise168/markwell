@@ -31,7 +31,7 @@ kobo-backup --format md     # Markdown only
 kobo-backup --format json   # JSON only
 kobo-backup --snapshot-only # just back up the database, no export
 kobo-backup --db PATH       # export from an existing snapshot (no device read)
-kobo-backup --device PATH   # override auto-detection of the Kobo mount
+kobo-backup --device PATH   # Kobo mount point OR KoboReader.sqlite path (overrides auto-detect)
 kobo-backup --out DIR       # output directory (default: ./output)
 ```
 

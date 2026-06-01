@@ -27,3 +27,15 @@ def test_cli_missing_db_exits(tmp_path):
     import pytest
     with pytest.raises(SystemExit):
         main(["--db", str(tmp_path / "nope.sqlite"), "--out", str(tmp_path / "o")])
+
+
+def test_cli_device_accepts_mount_root(tmp_path, kobo_db):
+    import shutil
+    mount = tmp_path / "KOBOeReader"
+    kobo_dir = mount / ".kobo"
+    kobo_dir.mkdir(parents=True)
+    shutil.copy(kobo_db, kobo_dir / "KoboReader.sqlite")
+    out = tmp_path / "out"
+    main(["--device", str(mount), "--out", str(out),
+          "--backup-dir", str(tmp_path / "backups")])
+    assert (out / "highlights.json").is_file()  # mount root resolved + snapshot + export

@@ -11,6 +11,18 @@ from .render import json as json_render
 from .render import markdown as md_render
 
 
+def _device_db(spec):
+    """Resolve a --device value to a KoboReader.sqlite path.
+
+    Accepts either the Kobo mount root (we append .kobo/KoboReader.sqlite) or a
+    direct path to a KoboReader.sqlite file.
+    """
+    p = pathlib.Path(spec)
+    if p.is_dir():
+        return p / ".kobo" / "KoboReader.sqlite"
+    return p
+
+
 def _resolve_source(args, *, stamp):
     """Decide which DB to read from, snapshotting the device at most once."""
     if args.db:
@@ -19,8 +31,8 @@ def _resolve_source(args, *, stamp):
             sys.exit(f"--db not found: {args.db}")
         return p
 
-    dev = pathlib.Path(args.device) if args.device else device.detect_device()
-    if dev and pathlib.Path(dev).is_file():
+    dev = _device_db(args.device) if args.device else device.detect_device()
+    if dev and dev.is_file():
         snap = device.snapshot(dev, args.backup_dir, stamp=stamp)
         print(f"✓ snapshot {snap.name} → {args.backup_dir}/")
         return snap
@@ -51,7 +63,7 @@ def main(argv=None):
     ap.add_argument("--snapshot-only", action="store_true",
                     help="snapshot the device and exit (no export)")
     ap.add_argument("--db", help="export from a snapshot (skips device read)")
-    ap.add_argument("--device", help="override device auto-detection")
+    ap.add_argument("--device", help="Kobo mount point or KoboReader.sqlite path (overrides auto-detection)")
     ap.add_argument("--out", default="output", help="output dir (default: output)")
     ap.add_argument("--backup-dir", default="backups",
                     help="snapshot dir (default: backups)")
@@ -60,8 +72,8 @@ def main(argv=None):
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     if args.snapshot_only:
-        dev = pathlib.Path(args.device) if args.device else device.detect_device()
-        if not (dev and pathlib.Path(dev).is_file()):
+        dev = _device_db(args.device) if args.device else device.detect_device()
+        if not (dev and dev.is_file()):
             sys.exit("No Kobo device found. Plug in the Kobo.")
         snap = device.snapshot(dev, args.backup_dir, stamp=stamp)
         print(f"✓ snapshot {snap.name} → {args.backup_dir}/")
