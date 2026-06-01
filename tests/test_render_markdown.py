@@ -1,5 +1,5 @@
-from kobo_backup.model import Book, Highlight
-from kobo_backup.render.markdown import render
+from markwell.model import Book, Highlight
+from markwell.render.markdown import render
 
 META = {"generated": "2026-06-01", "source": "snap.sqlite"}
 

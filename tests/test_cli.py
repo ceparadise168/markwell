@@ -1,6 +1,6 @@
 import json
 
-from kobo_backup.cli import main
+from markwell.cli import main
 
 
 def test_cli_exports_md_and_json_from_db(kobo_db, tmp_path):
@@ -12,7 +12,7 @@ def test_cli_exports_md_and_json_from_db(kobo_db, tmp_path):
     book_mds = [p for p in out.glob("*.md") if p.name != "index.md"]
     assert book_mds  # at least one per-book file
     doc = json.loads((out / "highlights.json").read_text(encoding="utf-8"))
-    assert doc["schema"] == "kobo-backup/1"
+    assert doc["schema"] == "markwell/1"
 
 
 def test_cli_format_json_only(kobo_db, tmp_path):

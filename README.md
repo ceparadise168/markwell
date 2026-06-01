@@ -1,4 +1,6 @@
-# kobo-backup
+# Markwell
+
+> *Mark well what you read.* Back up and export your Kobo highlights into a corpus you own.
 
 Safely back up and export your [Kobo](https://www.kobo.com/) highlights and
 notes to Markdown and JSON. Cross-platform, zero dependencies (Python standard
@@ -6,7 +8,7 @@ library only).
 
 ## Why
 
-Your highlights and notes are the irreplaceable part of your reading. `kobo-backup`:
+Your highlights and notes are the irreplaceable part of your reading. `markwell`:
 
 - **Never writes to your device.** It opens the Kobo database read-only and copies
   it with SQLite's online-backup API.
@@ -18,7 +20,7 @@ Your highlights and notes are the irreplaceable part of your reading. `kobo-back
 ## Install
 
 ```bash
-pip install kobo-backup
+pip install markwell
 ```
 
 ## Usage
@@ -26,13 +28,13 @@ pip install kobo-backup
 Plug in your Kobo, then:
 
 ```bash
-kobo-backup                 # snapshot the device, then export Markdown + JSON
-kobo-backup --format md     # Markdown only
-kobo-backup --format json   # JSON only
-kobo-backup --snapshot-only # just back up the database, no export
-kobo-backup --db PATH       # export from an existing snapshot (no device read)
-kobo-backup --device PATH   # Kobo mount point OR KoboReader.sqlite path (overrides auto-detect)
-kobo-backup --out DIR       # output directory (default: ./output)
+markwell                 # snapshot the device, then export Markdown + JSON
+markwell --format md     # Markdown only
+markwell --format json   # JSON only
+markwell --snapshot-only # just back up the database, no export
+markwell --db PATH       # export from an existing snapshot (no device read)
+markwell --device PATH   # Kobo mount point OR KoboReader.sqlite path (overrides auto-detect)
+markwell --out DIR       # output directory (default: ./output)
 ```
 
 Output:
@@ -43,7 +45,7 @@ backups/
 output/
 ├── index.md            all books, counts, links
 ├── <book>.md           one file per book, highlights in reading order
-└── highlights.json     machine-readable export (schema "kobo-backup/1")
+└── highlights.json     machine-readable export (schema "markwell/1")
 ```
 
 ## How it works
@@ -58,7 +60,7 @@ so re-running after un-highlighting on the device never loses old data.
 
 ```json
 {
-  "schema": "kobo-backup/1",
+  "schema": "markwell/1",
   "generated": "2026-06-01",
   "source": "KoboReader-20260601-101010.sqlite",
   "books": [

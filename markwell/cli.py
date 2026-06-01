@@ -56,7 +56,7 @@ def _write(files, out_dir):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        prog="kobo-backup",
+        prog="markwell",
         description="Safely back up and export Kobo highlights and notes.")
     ap.add_argument("--format", choices=["md", "json", "all"], default="all",
                     help="what to export (default: all)")

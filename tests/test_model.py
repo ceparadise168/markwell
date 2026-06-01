@@ -1,4 +1,4 @@
-from kobo_backup.model import Book, Highlight
+from markwell.model import Book, Highlight
 
 
 def test_year_range_single_year():

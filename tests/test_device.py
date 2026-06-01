@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from kobo_backup.device import detect_device, snapshot
+from markwell.device import detect_device, snapshot
 
 
 def _make_src(path):
@@ -46,12 +46,12 @@ def test_detect_device_finds_db(tmp_path, monkeypatch):
     (root / ".kobo").mkdir(parents=True)
     db = root / ".kobo" / "KoboReader.sqlite"
     db.write_text("")  # presence is enough; detect_device does not open it
-    monkeypatch.setattr("kobo_backup.device._candidate_roots", lambda: [root])
+    monkeypatch.setattr("markwell.device._candidate_roots", lambda: [root])
     assert detect_device() == db
 
 
 def test_detect_device_returns_none_when_absent(tmp_path, monkeypatch):
-    monkeypatch.setattr("kobo_backup.device._candidate_roots",
+    monkeypatch.setattr("markwell.device._candidate_roots",
                         lambda: [tmp_path / "nope"])
     assert detect_device() is None
 

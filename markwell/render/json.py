@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-SCHEMA = "kobo-backup/1"
+SCHEMA = "markwell/1"
 
 
 def render(books, meta):

@@ -1,7 +1,7 @@
 import json
 
-from kobo_backup.model import Book, Highlight
-from kobo_backup.render.json import render
+from markwell.model import Book, Highlight
+from markwell.render.json import render
 
 META = {"generated": "2026-06-01", "source": "snap.sqlite"}
 
@@ -13,7 +13,7 @@ def test_json_render_schema_and_content():
     files = render(books, META)
     assert set(files) == {"highlights.json"}
     doc = json.loads(files["highlights.json"])
-    assert doc["schema"] == "kobo-backup/1"
+    assert doc["schema"] == "markwell/1"
     assert doc["generated"] == "2026-06-01"
     assert doc["source"] == "snap.sqlite"
     hl = doc["books"][0]["highlights"][0]
