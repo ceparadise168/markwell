@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kobo-backup"
+version = "0.1.0"
+description = "Safely back up and export your Kobo highlights and notes to Markdown and JSON."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Eric Tu" }]
+keywords = ["kobo", "ebook", "highlights", "annotations", "backup"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Utilities",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+kobo-backup = "kobo_backup.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["kobo_backup*"]
