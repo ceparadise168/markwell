@@ -3,15 +3,19 @@ from __future__ import annotations
 
 import json
 
+from ..model import Book
+
 SCHEMA = "markwell/1"
 
 
-def render(books, meta):
+def render(books: list[Book], meta: dict) -> dict[str, str]:
     """Return {"highlights.json": text} following the documented schema."""
     doc = {
         "schema": SCHEMA,
         "generated": meta["generated"],
         "source": meta["source"],
+        "source_freshness": meta.get("source_freshness"),
+        "generator": f"markwell/{meta.get('version', '?')}",
         "books": [
             {
                 "title": b.title,

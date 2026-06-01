@@ -5,6 +5,7 @@ changes a table or column, adapt it here and nowhere else.
 """
 from __future__ import annotations
 
+import datetime
 import pathlib
 import re
 import sqlite3
@@ -12,9 +13,22 @@ from collections import OrderedDict
 
 from .model import Book, Highlight
 
+
+class UnsupportedSchemaError(Exception):
+    """Raised when this Kobo DB lacks a table/column the query needs."""
+
+
 # Highlights and notes (rows with text OR an annotation), joined to their book,
-# in reading order. Dogears have neither, so they are naturally excluded.
-_QUERY = """
+# in EPUB spine order. Dogears have neither, so they are naturally excluded.
+#
+# Reading order is the chapter's INTEGER VolumeIndex (spine position), found on
+# the chapter content row (ContentType=9) whose ContentID equals the bookmark's.
+# A correlated subquery (not a JOIN) fetches it so a duplicated chapter row can
+# never fan a bookmark into multiple output rows; MIN() collapses any duplicate.
+# VolumeIndex IS NULL (e.g. older firmware) falls back to ContentID text order.
+_CHAP_INDEX = """(SELECT MIN(ch.VolumeIndex) FROM content ch
+                   WHERE ch.ContentID = b.ContentID AND ch.ContentType = 9)"""
+_QUERY = f"""
     SELECT b.VolumeID    AS vid,
            c.Title       AS title,
            c.Attribution AS author,
@@ -27,7 +41,10 @@ _QUERY = """
     WHERE COALESCE(b.Hidden, 0) NOT IN (1, '1', 'true', 'TRUE')
       AND ( (b.Text       IS NOT NULL AND TRIM(b.Text)       <> '')
          OR (b.Annotation IS NOT NULL AND TRIM(b.Annotation) <> '') )
-    ORDER BY b.VolumeID, b.ContentID, b.ChapterProgress, b.StartOffset
+    ORDER BY b.VolumeID,
+             CASE WHEN {_CHAP_INDEX} IS NULL THEN 1 ELSE 0 END,
+             {_CHAP_INDEX},
+             b.ContentID, b.ChapterProgress, b.StartOffset
 """
 
 
@@ -37,17 +54,35 @@ def _clean(s):
 
 
 def _fmt_date(created):
-    """'2024-03-17T10:10:53.000' -> '2024-03-17'; falsy -> ''."""
-    return created[:10] if created else ""
+    """Kobo stores DateCreated as UTC; render the LOCAL calendar date.
+
+    '2024-03-17T10:10:53.000' (UTC) -> local 'YYYY-MM-DD'. Falsy or
+    non-ISO input -> '' (the date is then simply omitted downstream).
+    """
+    if not created:
+        return ""
+    try:
+        return (datetime.datetime
+                .strptime(created[:19], "%Y-%m-%dT%H:%M:%S")
+                .replace(tzinfo=datetime.timezone.utc)
+                .astimezone().date().isoformat())
+    except ValueError:
+        return ""
 
 
-def read_books(db_path):
+def read_books(db_path) -> list[Book]:
     """Read highlights/notes from a snapshot, grouped by book in reading order."""
     uri = pathlib.Path(db_path).resolve().as_uri() + "?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
     try:
-        rows = conn.execute(_QUERY).fetchall()
+        try:
+            rows = conn.execute(_QUERY).fetchall()
+        except sqlite3.OperationalError as e:
+            raise UnsupportedSchemaError(
+                f"This KoboReader.sqlite is missing a table or column markwell "
+                f"needs ({e}). Please file an issue with your Kobo firmware "
+                f"version.") from e
     finally:
         conn.close()
 

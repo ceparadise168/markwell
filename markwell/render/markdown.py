@@ -3,7 +3,17 @@ from __future__ import annotations
 
 import re
 
-_EN_DASH = "–"
+from ..model import Book, year_span
+
+# Windows reserved device names — unusable as a bare filename stem (any extension).
+_WIN_RESERVED = {"CON", "PRN", "AUX", "NUL",
+                 *(f"COM{i}" for i in range(1, 10)),
+                 *(f"LPT{i}" for i in range(1, 10))}
+
+
+def _cell(s):
+    """Escape a table cell so a literal "|" can't break the index table row."""
+    return s.replace("|", "\\|")
 
 
 def _main_title(title):
@@ -26,6 +36,8 @@ def _stem(title, used):
     if len(name) > 50:
         name = name[:50].rstrip("._ ")
     name = name or "book"
+    if name.split(".")[0].upper() in _WIN_RESERVED:
+        name += "_"
     base, i = name, 2
     while name in used:
         name, i = f"{base}-{i}", i + 1
@@ -59,32 +71,32 @@ def _render_index(entries, meta):
     all_years = [e["year"] for e in entries if e["year"]]
     span = ""
     if all_years:
-        lo = min(y[:4] for y in all_years)
-        hi = max(y[-4:] for y in all_years)
-        span = lo if lo == hi else f"{lo}{_EN_DASH}{hi}"
+        span = year_span(min(y[:4] for y in all_years), max(y[-4:] for y in all_years))
     lines = [
         "# Kobo Highlights",
         "",
         f"**{total} highlights** across **{len(entries)} books**"
         + (f" · {span}" if span else ""),
         "",
-        f"Generated {meta['generated']} · source `{meta['source']}`",
+        f"Generated {meta['generated']} · source `{meta['source']}`"
+        f" · markwell v{meta.get('version', '?')}",
         "",
         "| Book | Author | Highlights | Years |",
         "|---|---|--:|---|",
     ]
     for e in entries:
         lines.append(
-            f"| [{e['main']}]({e['file']}) | {e['author']} | {e['count']} | {e['year']} |")
+            f"| [{_cell(e['main'])}]({e['file']}) | {_cell(e['author'])} "
+            f"| {e['count']} | {e['year']} |")
     return "\n".join(lines) + "\n"
 
 
-def render(books, meta):
+def render(books: list[Book], meta: dict) -> dict[str, str]:
     """Return {filename: markdown} for every per-book file plus index.md.
 
-    `meta` carries {"generated": str, "source": str}.
+    `meta` carries {"generated": str, "source": str, "version": str}.
     """
-    used = set()
+    used = {"index"}  # reserve so a book stemmed "index" can't clobber index.md
     files = {}
     entries = []
     for book in books:

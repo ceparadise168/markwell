@@ -9,6 +9,11 @@ from dataclasses import dataclass, field
 _EN_DASH = "–"
 
 
+def year_span(lo: str, hi: str) -> str:
+    """Format a low/high year pair as a span: "2024" if equal, else "2024–2025"."""
+    return lo if lo == hi else f"{lo}{_EN_DASH}{hi}"
+
+
 @dataclass
 class Highlight:
     text: str                 # the highlighted passage
@@ -29,5 +34,4 @@ class Book:
         years = sorted(h.date[:4] for h in self.highlights if h.date)
         if not years:
             return ""
-        lo, hi = years[0], years[-1]
-        return lo if lo == hi else f"{lo}{_EN_DASH}{hi}"
+        return year_span(years[0], years[-1])

@@ -1,14 +1,20 @@
 import sqlite3
+import sys
 
 import pytest
 
+from markwell import device
 from markwell.device import detect_device, snapshot
 
 
 def _make_src(path):
+    # A Kobo-shaped source: snapshot() now verifies the snapshot has a Bookmark
+    # table before committing it, so a valid source must carry one. The extra `t`
+    # table lets the content-copy assertion below stay simple.
     conn = sqlite3.connect(str(path))
     conn.execute("CREATE TABLE t (x)")
     conn.execute("INSERT INTO t VALUES (1)")
+    conn.execute("CREATE TABLE Bookmark (BookmarkID TEXT)")
     conn.commit()
     conn.close()
 
@@ -75,3 +81,68 @@ def test_snapshot_cleans_tmp_on_failure(tmp_path):
     # failure must leave neither a .tmp nor a final snapshot behind
     assert list(backups.glob("*.tmp")) == []
     assert list(backups.glob("KoboReader-*.sqlite")) == []
+
+
+def test_snapshot_is_zero_touch_on_wal(wal_kobo_db, tmp_path):
+    # A live WAL source (uncheckpointed -wal/-shm). The old mode=ro+backup()
+    # path rewrites the device's -shm here (and fails outright on a read-only
+    # mount); the copy-then-backup path must touch nothing on the source.
+    src = wal_kobo_db
+    src_dir = src.parent
+    # Compare the device dir's own files only (the snapshot's backup dir lands
+    # under tmp_path too; it is test scaffolding, not source state). This still
+    # catches a rewritten -shm or any newly created -wal/-shm sibling.
+    before = {p.name: p.read_bytes() for p in src_dir.iterdir() if p.is_file()}
+
+    dest = snapshot(src, tmp_path / "backups", stamp="20260601-101010")
+
+    after = {p.name: p.read_bytes() for p in src_dir.iterdir() if p.is_file()}
+    assert after == before  # no new -wal/-shm, main file byte-identical
+
+    # ...and the uncheckpointed WAL rows were still captured.
+    c = sqlite3.connect(str(dest))
+    try:
+        assert c.execute("SELECT COUNT(*) FROM Bookmark").fetchone()[0] == 6
+    finally:
+        c.close()
+
+
+def test_snapshot_rejects_db_without_bookmark_table(tmp_path):
+    # A valid SQLite db that is not a Kobo DB must be refused, not committed.
+    src = tmp_path / "src.sqlite"
+    conn = sqlite3.connect(str(src))
+    conn.execute("CREATE TABLE other (x)")
+    conn.commit()
+    conn.close()
+    backups = tmp_path / "backups"
+    with pytest.raises(sqlite3.DatabaseError):
+        snapshot(src, backups, stamp="20260601-101010")
+    assert list(backups.glob("*.tmp")) == []
+    assert list(backups.glob("KoboReader-*.sqlite")) == []
+
+
+def test_candidate_roots_darwin(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    roots = device._candidate_roots()
+    assert all(str(r).startswith("/Volumes/KOBOeReader") for r in roots)
+
+
+def test_candidate_roots_linux(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    roots = device._candidate_roots()
+    assert any("KOBOeReader" in str(r) for r in roots)
+
+
+def test_candidate_roots_windows_skips_floppy_letters(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    # Pretend every drive letter exists so the floppy-letter skip is what's tested.
+    monkeypatch.setattr("markwell.device.os.path.exists", lambda p: True)
+    roots = device._candidate_roots()
+    letters = {str(r)[0] for r in roots}
+    assert "A" not in letters and "B" not in letters
+    assert "C" in letters
+
+
+def test_candidate_roots_unknown_platform(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "sunos5")
+    assert device._candidate_roots() == []
