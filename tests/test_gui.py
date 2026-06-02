@@ -2,6 +2,7 @@
 import http.client
 import re
 import shutil
+import socket
 import threading
 import time
 
@@ -212,6 +213,29 @@ def _empty_sqlite(path):
     import sqlite3 as _s
     _s.connect(str(path)).close()
     return path
+
+
+def _raw_post(port, extra_header):
+    """Send a hand-rolled POST so we can supply bad framing; return the response."""
+    s = socket.create_connection(("127.0.0.1", port), timeout=3)
+    req = (f"POST /api/open HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+           f"{extra_header}\r\nConnection: close\r\n\r\n")
+    s.sendall(req.encode("latin1"))
+    data = s.recv(4096).decode("latin1")
+    s.close()
+    return data
+
+
+def test_malformed_content_length_is_handled(live):
+    httpd, port = live
+    resp = _raw_post(port, "Content-Length: not-a-number")
+    assert resp.startswith("HTTP/1.1 400")  # clean error, not a crash/hang
+
+
+def test_chunked_body_is_rejected(live):
+    httpd, port = live
+    resp = _raw_post(port, "Transfer-Encoding: chunked")
+    assert resp.startswith("HTTP/1.1 400")
 
 
 def test_api_books_corrupt_snapshot_returns_friendly_json(live, service):

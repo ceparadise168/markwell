@@ -84,10 +84,19 @@ class _Handler(BaseHTTPRequestHandler):
         self._json({"error": message}, status=status)
 
     def _read_body(self) -> bytes | None:
-        """Read (and thereby drain) the request body. Returns None if it is over
-        the cap — draining matters so a rejected POST can't desync keep-alive."""
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > _MAX_BODY:
+        """Read (and thereby drain) the request body. Returns None on a body we
+        won't accept — chunked, malformed length, or over the cap — closing the
+        connection so a rejected POST can't desync keep-alive."""
+        if self.headers.get("Transfer-Encoding"):  # we don't decode chunked
+            self.close_connection = True
+            return None
+        raw = self.headers.get("Content-Length")
+        try:
+            length = int(raw) if raw is not None else 0
+        except (TypeError, ValueError):
+            self.close_connection = True
+            return None
+        if length < 0 or length > _MAX_BODY:
             self.close_connection = True
             return None
         return self.rfile.read(length) if length > 0 else b""
@@ -157,7 +166,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         raw = self._read_body()  # always drain first (keep-alive safety)
         if raw is None:
-            self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request too large")
+            self._error(HTTPStatus.BAD_REQUEST, "unsupported or malformed request body")
             return
         if not self._host_ok():
             self._error(HTTPStatus.FORBIDDEN, "bad host")

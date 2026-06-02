@@ -109,3 +109,44 @@ P3 (selection)
 
 **Re-verified after fixes:** 67 tests pass; zero browser console errors/warnings; CSP active
 and not blocking; live screenshots refreshed (incl. dark mode, narrow, and no-match).
+
+---
+
+## Round 3 — regression + fresh-eyes verification
+
+**Plan.** The Round 2 fixes included a large `app.js`/`server.py` rewrite — exactly what
+introduces regressions. Plus a self keyboard-nav smoke test. Then a lean 3-agent workflow
+(regression / security / UX-a11y) focused on *regressions and remaining real issues*.
+
+**Check.** I keyboard-tested first and caught a focus-order bug myself; the workflow then
+raised **12, confirmed 11 (8 regressions)**. The headline: the **format toggle was still
+broken** — two reviewers independently found that `loadStatus()` replaces `state.status`
+wholesale on every navigation, so the choice reset before the hero backup ran. (My Round-2
+"it works" check only passed because I didn't navigate between choosing and re-exporting.)
+
+**Act — fixed:**
+- **Self-found (keyboard):** `route()` moved focus to `<main>` even on first load, so the
+  first Tab skipped the skip-link/nav. Now focus moves only on user navigation; first Tab
+  reaches skip-link → nav. Verified live (Tab/Enter walk).
+- **P1 — format toggle reset on navigation:** the chosen format now lives in a persistent
+  `state.fmt` (not the replaced `state.status`); `currentFmt()` reads it; History chips
+  render from it. **Verified live:** pick JSON → navigate to Backup → `currentFmt()` is still
+  `"json"`. (And confirmed a JSON-only re-export writes only `highlights.json`, pruning `.md`.)
+- **P2 — search no-match hidden from screen readers / count spam:** `#count` is now a plain
+  visual label; a debounced sr-only live region announces results once typing settles; the
+  no-match message is in the accessibility tree. Verified live.
+- **P2 — keep-alive desync via `Transfer-Encoding: chunked`:** rejected and connection closed.
+- **P3 — malformed `Content-Length` crashed the thread:** parsed defensively → clean `400`.
+  (Both framing cases now covered by tests.)
+- **P3 — zombie/duplicate export-poll loops** after navigating away: a `pollGen` token retires
+  stale loops on navigation.
+- **P3 — live region re-announced the same phase every 500ms:** guarded on phase change.
+
+**Deliberately not changed (noted for Eric):**
+- **"Chapter N" in the reading view** labels `reader.py`'s reading-order counter, which isn't
+  guaranteed to equal the book's printed chapter number when only some chapters are
+  highlighted. Kept as-is because it matches the shipped CLI/Markdown export (`ch.N`) and the
+  documented model meaning; changing the export's visible content is a CLI decision for you.
+
+**Re-verified:** 69 tests pass; zero console errors; format persistence, keyboard nav, and
+search a11y confirmed in a live browser.

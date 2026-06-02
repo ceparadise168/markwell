@@ -62,9 +62,24 @@ const state = {
   source: "latest",   // 'latest' | 'sample' | a snapshot filename
   lib: null,          // cached books document for `source`
   q: "",
+  fmt: null,          // user-chosen export format; survives status refreshes
 };
 
-function currentFmt() { return (state.status && state.status.format) || "all"; }
+let pollGen = 0;      // bumped on navigation to retire stale export-poll loops
+let srPhase = "";     // last phase announced, so the live region doesn't repeat
+let srSearchTimer;    // debounce for the search live-region announcement
+
+function currentFmt() {
+  return state.fmt || (state.status && state.status.format) || "all";
+}
+
+function announceSearch(text) {
+  clearTimeout(srSearchTimer);
+  srSearchTimer = setTimeout(() => {
+    const el = document.getElementById("search-sr");
+    if (el) el.textContent = text;
+  }, 700);
+}
 
 async function loadStatus() {
   state.status = await api("/api/status");
@@ -102,7 +117,8 @@ function setNav(name) {
   });
 }
 
-async function route() {
+async function route(focusMain) {
+  pollGen++;  // retire any export-poll loop from the view we're leaving
   const [name, arg] = parseHash();
   setNav(name === "book" ? "library" : name);
   const fn = routes[name] || renderBackup;
@@ -113,10 +129,13 @@ async function route() {
     console.error(err);
     showError();
   }
-  view.focus();
+  // Move focus to the new view only on user navigation (announces the new
+  // content to screen readers); on first load, leave focus at the top so the
+  // initial Tab reaches the skip-link → nav naturally.
+  if (focusMain) view.focus();
 }
 
-window.addEventListener("hashchange", route);
+window.addEventListener("hashchange", () => route(true));
 
 /* ---------- view: Back up ---------- */
 function deviceBanner(s) {
@@ -164,6 +183,7 @@ async function renderBackup() {
 async function startBackup() {
   const btn = document.getElementById("backup-btn");
   btn.disabled = true;
+  srPhase = "";
   try {
     await api("/api/export", { method: "POST", body: { use_device: true, format: currentFmt() } });
     pollExport();
@@ -183,13 +203,16 @@ const PHASES = [
   ["rendering", "Preparing your files"],
 ];
 
-async function pollExport() {
+async function pollExport(gen) {
+  if (gen === undefined) gen = pollGen;
+  if (gen !== pollGen) return;        // a newer navigation retired this loop
   let job;
   try { job = await api("/api/export/status"); }
   catch (_) { return; }
+  if (gen !== pollGen) return;        // bail if we navigated during the await
   renderProgress(job);
   if (job.state === "running") {
-    setTimeout(pollExport, 500);
+    setTimeout(() => pollExport(gen), 500);
   } else if (job.state === "done") {
     state.lib = null;                 // library changed — drop cache
     try { await loadStatus(); } catch (_) { /* status refresh is best-effort */ }
@@ -238,9 +261,12 @@ function renderProgress(job) {
     return;
   }
 
-  // running
+  // running — announce only on phase change, so the 500ms poll doesn't repeat
   const activeIdx = PHASES.findIndex((p) => p[0] === job.phase);
-  if (sr && activeIdx >= 0) sr.textContent = PHASES[activeIdx][1] + "…";
+  if (sr && activeIdx >= 0 && job.phase !== srPhase) {
+    srPhase = job.phase;
+    sr.textContent = PHASES[activeIdx][1] + "…";
+  }
   box.innerHTML = `<ul class="steps" aria-hidden="true">` + PHASES.map((p, i) => {
     const cls = i < activeIdx ? "done" : i === activeIdx ? "active" : "";
     const mark = i < activeIdx ? `<span class="tick">${ICON.check}</span>`
@@ -276,10 +302,11 @@ async function renderLibrary() {
         <input type="search" id="q" placeholder="Search your highlights…"
                aria-label="Search your highlights" value="${esc(state.q)}">
       </div>
-      <span class="count-note" id="count" role="status" aria-live="polite"></span>
+      <span class="count-note" id="count"></span>
     </div>
+    <span id="search-sr" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
     <div class="grid" id="grid"></div>
-    <div class="empty" id="noMatch" hidden aria-hidden="true"><p></p></div>
+    <div class="empty" id="noMatch" hidden><p></p></div>
   </div>`;
 
   wireSampleBanner();
@@ -309,6 +336,10 @@ function refreshGrid() {
     const p = nm.querySelector("p");
     if (p) p.textContent = q ? `No highlights match “${state.q}”.` : "No books yet.";
   }
+  // announce results to screen readers, debounced so typing doesn't spam
+  announceSearch(!q ? "" : matches.length
+    ? `${matches.length} of ${books.length} books match`
+    : `No highlights match ${state.q}.`);
   wireCards();
 }
 
@@ -410,9 +441,9 @@ async function renderHistory() {
         <summary>Export options</summary>
         <p class="count-note" style="margin:10px 0 0">Choose which kinds of files to create when you back up.</p>
         <div class="fmt-row" id="fmt">
-          ${fmtChip("all", "Both", s.format)}
-          ${fmtChip("md", "Readable text", s.format)}
-          ${fmtChip("json", "A data file", s.format)}
+          ${fmtChip("all", "Both", currentFmt())}
+          ${fmtChip("md", "Readable text", currentFmt())}
+          ${fmtChip("json", "A data file", currentFmt())}
         </div>
       </details>
     </section>
@@ -499,7 +530,7 @@ function wireFmt() {
       document.querySelectorAll("#fmt .chip-toggle").forEach((x) =>
         x.setAttribute("aria-pressed", "false"));
       c.setAttribute("aria-pressed", "true");
-      if (state.status) state.status.format = c.dataset.fmt;
+      state.fmt = c.dataset.fmt;  // persists across status refreshes (see currentFmt)
       toast("Your next backup will use this.");
     };
   });
@@ -556,4 +587,4 @@ function showError() {
 }
 
 /* ---------- start ---------- */
-route();
+route(false);
