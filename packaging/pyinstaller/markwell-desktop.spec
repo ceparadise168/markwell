@@ -14,11 +14,15 @@ collects only package GUI assets, never local user data from the repository root
 
 from __future__ import annotations
 
-import fnmatch
 import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
+
+# Import the shared release policy (packaging/_forbidden.py) so this spec's input
+# filter and packaging/preflight.py's output scan can never drift apart.
+sys.path.insert(0, str(Path(SPECPATH).parent))
+from _forbidden import forbidden_reason
 
 
 ROOT = Path(SPECPATH).parents[1]
@@ -27,27 +31,13 @@ ROOT = Path(SPECPATH).parents[1]
 # which uses relative imports. See entry.py.
 ENTRYPOINT = Path(SPECPATH) / "entry.py"
 
-FORBIDDEN_ARTIFACT_INPUTS = (
-    ".kobo/*",
-    "output/*",
-    "backups/*",
-    "*.sqlite",
-    "*.sqlite-shm",
-    "*.sqlite-wal",
-    ".playwright-mcp/*",
-    ".pytest_cache/*",
-    "__pycache__/*",
-)
-
-
 def allowed_data(item):
     src, _dest = item
     try:
         rel = Path(src).resolve().relative_to(ROOT)
     except ValueError:
         return True
-    rel_posix = rel.as_posix()
-    return not any(fnmatch.fnmatch(rel_posix, pat) for pat in FORBIDDEN_ARTIFACT_INPUTS)
+    return forbidden_reason(rel) is None
 
 
 datas = [

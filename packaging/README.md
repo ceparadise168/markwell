@@ -24,21 +24,22 @@ server entrypoint.
 The spec includes `markwell/gui/assets/*` so the browser UI loads from the
 packaged app.
 
-Release artifacts must never include private or local data. The packaging config
-and release preflight guard against these paths:
+Release artifacts must never include private or local data — a reader's Kobo
+snapshots, exports, backups, SQLite databases, or local caches. The forbidden
+directory names and file suffixes are defined once in `packaging/_forbidden.py`;
+both the PyInstaller spec (input filter) and the release preflight (output scan)
+import from it so they can never drift apart.
 
-- `.kobo/`
-- `output/`
-- `backups/`
-- `*.sqlite`
-- `*.sqlite-shm`
-- `*.sqlite-wal`
-- `.playwright-mcp/`
-- `.pytest_cache/`
-- `__pycache__/`
+## Release Privacy Preflight
 
-Before publishing, run the release artifact privacy preflight against `dist/`
-and each platform staging directory.
+Before publishing, scan `dist/` and each platform staging directory:
+
+```bash
+python3 packaging/preflight.py dist
+```
+
+It exits 0 when the tree is clean, 1 when anything forbidden is found (printing
+each offender), and 2 on a usage error — so it can gate a release in CI.
 
 ## Expected Smoke Test
 
