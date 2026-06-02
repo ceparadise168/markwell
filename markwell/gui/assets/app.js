@@ -2,6 +2,10 @@
 
 "use strict";
 
+// Mark JS as live so the fail-open reveal CSS (html.js .reveal:not(.in)) only
+// ever hides content while this script is running to reveal it again.
+document.documentElement.classList.add("js");
+
 const TOKEN = document.querySelector('meta[name="markwell-token"]').content;
 const view = document.getElementById("view");
 const toastEl = document.getElementById("toast");
@@ -35,6 +39,124 @@ function toast(msg) {
   toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2600);
 }
 
+/* ---------- motion preference (used everywhere animation is JS-driven) ----------
+   The CSS @media (prefers-reduced-motion) block kills CSS transitions/animations,
+   but it can NOT stop element.animate() or JS-set style.opacity / smooth scroll.
+   So every JS-driven motion path consults this guard directly. */
+const prefersReducedMotion = () =>
+  !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+/* ---------- day / night theme ----------
+   Three states: no stored choice → OS media query governs; stored "dark"/"light"
+   → [data-theme] override wins (see the source-order note in style.css).
+   FOUC tradeoff (accepted, spec §F): app.js is deferred, so a user whose stored
+   choice differs from their OS sees one frame of the OS theme before initTheme()
+   runs. Fixing it would need a blocking inline head script — forbidden by the CSP
+   (script-src 'self') — or a new theme-init.js allowlisted in the server, which is
+   out of scope. The common case (no choice, or choice == OS) paints correctly. */
+const THEME_KEY = "markwell-theme";
+
+function storedTheme() {                 // -> "light" | "dark" | null
+  try { return localStorage.getItem(THEME_KEY); } catch (_) { return null; }
+}
+function systemPrefersDark() {
+  return !!(window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+}
+function effectiveTheme() {               // what the user is actually seeing
+  return storedTheme() || (systemPrefersDark() ? "dark" : "light");
+}
+function applyTheme(theme) {              // theme: "light" | "dark" | null (=system)
+  const root = document.documentElement;
+  if (theme === "light" || theme === "dark") root.setAttribute("data-theme", theme);
+  else root.removeAttribute("data-theme");   // null => let the media query govern
+  // Drive the toggle's icon off the *effective* theme so the correct (destination)
+  // icon shows even when data-theme is unset (the system-default case).
+  root.classList.toggle("is-dark", effectiveTheme() === "dark");
+}
+function toggleTheme() {
+  const next = effectiveTheme() === "dark" ? "light" : "dark";
+  try { localStorage.setItem(THEME_KEY, next); } catch (_) { /* private mode: session-only */ }
+  applyTheme(next);
+}
+function initTheme() {
+  applyTheme(storedTheme());             // null on first run -> system default, no flash
+  const btn = document.getElementById("theme-toggle");
+  if (btn) btn.onclick = toggleTheme;
+}
+
+/* ---------- reveal on scroll (one shared observer; fail-open with 3 safety nets) ----------
+   Contract: an element is hidden ONLY when html.js + .reveal + :not(.in) all hold.
+   Callers add .reveal to markup AND immediately pass those nodes here, so a partial
+   render can never leave already-painted content stuck invisible. */
+let _io = null;
+function revealAll(nodes) {
+  const list = Array.from(nodes || []);
+  if (!list.length) return;
+  // reduced motion or no IntersectionObserver -> reveal immediately, no animation
+  if (prefersReducedMotion() || !("IntersectionObserver" in window)) {
+    list.forEach((n) => n.classList.add("reveal", "in"));
+    return;
+  }
+  list.forEach((n) => n.classList.add("reveal"));
+  if (!_io) {
+    _io = new IntersectionObserver((ents) => {
+      ents.forEach((en) => {
+        if (en.isIntersecting) { en.target.classList.add("in"); _io.unobserve(en.target); }
+      });
+    }, { rootMargin: "0px 0px -6% 0px" });
+  }
+  list.forEach((n, i) => {
+    n.style.transitionDelay = (Math.min(i, 8) * 55) + "ms";
+    _io.observe(n);
+  });
+  // net 1: anything already on screen reveals next frame
+  requestAnimationFrame(() => list.forEach((n) => {
+    if (n.getBoundingClientRect().top < innerHeight * 0.96) { n.classList.add("in"); _io.unobserve(n); }
+  }));
+  // net 2: nothing ever stays hidden, even if the observer never fires
+  setTimeout(() => list.forEach((n) => {
+    if (!n.classList.contains("in")) { n.classList.add("in"); _io.unobserve(n); }
+  }), 1600);
+}
+
+/* ---------- reading progress bar + scroll-to-top FAB ----------
+   One passive scroll listener, attached ONCE at startup. Each view opts into the
+   behaviours it wants via setScrollContext(); route() resets them to off so the
+   bar/FAB never linger on a view that didn't ask for them. The reading bar lives
+   at #read-progress (NOT #progress — that id belongs to the Back-up export box). */
+const scrollFx = { progressOn: false, fabOn: false };
+
+function setScrollContext({ progress = false, fab = false } = {}) {
+  scrollFx.progressOn = progress;
+  scrollFx.fabOn = fab;
+  const pbar = document.getElementById("read-progress");
+  if (pbar) {
+    pbar.classList.toggle("show", progress);
+    if (!progress) pbar.style.width = "0";
+  }
+  const fabEl = document.getElementById("to-top");
+  if (fabEl) fabEl.classList.remove("show");   // re-evaluated on the sync below / next scroll
+  updateScrollFx();                             // sync immediately for an already-scrolled view
+}
+function updateScrollFx() {
+  const st = window.scrollY || document.documentElement.scrollTop;
+  if (scrollFx.progressOn) {
+    const h = document.documentElement.scrollHeight - window.innerHeight;
+    const pbar = document.getElementById("read-progress");
+    if (pbar) pbar.style.width = h > 0 ? (100 * st / h) + "%" : "0";
+  }
+  const fab = document.getElementById("to-top");
+  if (fab) fab.classList.toggle("show", scrollFx.fabOn && st > 620);
+}
+function initScrollToTop() {
+  const fab = document.getElementById("to-top");
+  if (fab) fab.onclick = () =>
+    window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+}
+// Exactly one scroll listener for the whole app (attached at module load, never
+// per-route, so it can't leak). It reads scrollFx flags set by setScrollContext.
+window.addEventListener("scroll", updateScrollFx, { passive: true });
+
 async function openFolder(dir) {
   try {
     const d = await api("/api/open", { method: "POST", body: { dir } });
@@ -47,6 +169,7 @@ async function openFolder(dir) {
 
 const ICON = {
   check: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 13l4 4L19 7"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
   folder: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   book: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM19 17H6"/></svg>',
   search: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
@@ -86,8 +209,10 @@ const state = {
   status: null,
   source: "latest",   // 'latest' | 'sample' | a snapshot filename
   lib: null,          // cached books document for `source`
+  flat: null,         // flat highlight index for `lib` (hero + search); rebuilt with lib
   q: "",
   fmt: null,          // user-chosen export format; survives status refreshes
+  jumpTo: null,       // {bookIdx, hlIdx} hand-off: hero/search → renderBook scrolls+flashes
 };
 
 let pollGen = 0;      // bumped on navigation to retire stale export-poll loops
@@ -118,8 +243,43 @@ async function loadLibrary(source) {
     state.lib = await api("/api/books?source=" + encodeURIComponent(source));
     // stamp a stable index once so cards can route without an O(n) scan per render
     (state.lib.books || []).forEach((b, i) => { b._idx = i; });
+    // flatten every highlight once for the hero + highlight search. Tied to the
+    // same cache guard, so any path that sets state.lib = null rebuilds both.
+    state.flat = buildFlatIndex(state.lib.books);
   }
   return state.lib;
+}
+
+/* Flatten books[].highlights[] into one searchable/sampleable list. Each entry
+   keeps the (bookIdx, hlIdx) coordinates the reader uses for its anchor ids, so a
+   click in the hero or in search results can jump straight to the source line.
+   hlIdx is the index into book.highlights[] as received — the SAME array, in the
+   SAME order, that renderBook iterates to build id="hl-{bookIdx}-{hlIdx}". Neither
+   path may sort highlights, or the jump breaks. */
+function buildFlatIndex(books) {
+  const flat = [];
+  (books || []).forEach((b) => {
+    (b.highlights || []).forEach((h, hlIdx) => {
+      flat.push({
+        text: h.text || "",
+        note: h.note || "",
+        date: h.date || "",
+        bookIdx: b._idx,
+        hlIdx,
+        bookTitle: b.title || "",
+        chapterIndex: h.chapter_index,
+      });
+    });
+  });
+  return flat;
+}
+
+/* Hand-off used by the hero book-link and every search result. renderBook
+   (book view) reads state.jumpTo, scrolls the matching anchor into view + flashes
+   it, then clears it. If the book/anchor is gone it degrades to "open at top". */
+function jumpToHighlight(bookIdx, hlIdx) {
+  state.jumpTo = { bookIdx, hlIdx };
+  location.hash = "#/book/" + bookIdx;
 }
 
 /* ---------- router ---------- */
@@ -151,9 +311,15 @@ async function route(focusMain) {
     return;
   }
   pollGen++;  // a real view change retires the poll loop from the view we're leaving
+  // Each view starts at the top with no atmosphere chrome; views opt back in
+  // (the book view turns the reading bar + FAB on in a later slice). This runs
+  // AFTER pollGen++ so the poll-retirement above is untouched, and is skipped on
+  // the unknown-fragment branch above so the skip-link doesn't yank the scroll.
+  setScrollContext({ progress: false, fab: false });
+  window.scrollTo({ top: 0, behavior: "auto" });
   setNav(name === "book" ? "library" : name);
   const fn = routes[name];
-  view.innerHTML = '<div class="wrap"><div class="route-load"><span class="spinner"></span></div></div>';
+  view.innerHTML = '<div class="wrap"><div class="route-load" role="status" aria-label="Loading…"><span class="spinner" aria-hidden="true"></span></div></div>';
   try {
     await fn(arg);
   } catch (err) {
@@ -307,6 +473,205 @@ function renderProgress(job) {
   }).join("") + `</ul>`;
 }
 
+/* ---------- resurface-a-line hero ----------
+   Picks a "punchy, complete" line to revisit; a green highlighter sweep falls on
+   the opening clause. Hero quote + reshuffle are <button>s (keyboard-reachable,
+   aria-labelled). The fade on reshuffle is gated by prefers-reduced-motion. */
+const HERO_MIN = 16, HERO_MAX = 80;
+
+function heroPool(flat) {
+  // prefer short, single-line entries; fall open to the whole set so the hero is
+  // never empty just because every line is long/multiline.
+  const pool = (flat || []).filter((h) => {
+    const t = h.text;
+    return t && t.indexOf("\n") < 0 && t.length >= HERO_MIN && t.length <= HERO_MAX;
+  });
+  return pool.length ? pool : (flat || []);
+}
+
+let _heroCur = null;   // remember the current pick so reshuffle doesn't repeat it
+function pickHero(pool) {
+  if (!pool.length) return null;
+  let h, guard = 0;
+  do { h = pool[Math.floor(Math.random() * pool.length)]; guard++; }
+  while (h === _heroCur && pool.length > 1 && guard < 20);
+  _heroCur = h;
+  return h;
+}
+
+/* Green marker on the opening clause. esc() (escapes & < > " ') is applied to BOTH
+   the marked head and the remainder before they're joined; the only literal HTML we
+   inject is the .marker-em wrapper we control — so untrusted text can never break out. */
+function markEmphasis(text) {
+  const t = text || "";
+  if (t.length <= 46) return `<span class="marker-em">${esc(t)}</span>`;
+  let head;
+  const cjk = t.match(/^[^。！？；]*[。！？；]/);     // first CJK clause, if any
+  if (cjk && cjk[0].length <= 52) head = cjk[0];
+  else {
+    const en = t.match(/^.{20,52}?[.!?](?=\s|$)/);   // else an en sentence in-window
+    head = en ? en[0] : t.slice(0, 42);              // else just the opening words
+  }
+  return `<span class="marker-em">${esc(head)}</span>${esc(t.slice(head.length))}`;
+}
+
+function heroMetaInner(h) {
+  return `<button class="hero-book" type="button" data-bookidx="${h.bookIdx}" data-hlidx="${h.hlIdx}"
+            aria-label="Open ${esc(h.bookTitle)} at this highlight">${esc(h.bookTitle)}</button>${
+    h.date ? `<span class="hero-sep" aria-hidden="true"></span><span class="hero-date">${esc(h.date)}</span>` : ""}`;
+}
+
+function heroHTML(h) {
+  // The quote text itself is the hero's primary content, so the hero-quote button
+  // carries NO aria-label — its accessible name is computed from the quote, and a
+  // screen-reader user hears the line (not a generic action label). aria-describedby
+  // adds the "press to show another" affordance without masking the quote, and keeps
+  // it distinct from the reshuffle control (which owns the "Show another" label).
+  return `<div class="hero-line reveal" id="hero">
+    <p class="hero-eyebrow">From your highlights · a line to revisit</p>
+    <button class="hero-quote" id="hero-quote" type="button" aria-describedby="hero-hint">
+      <span class="hero-q">${markEmphasis(h.text)}</span>
+    </button>
+    <span id="hero-hint" class="sr-only">Press to show another highlight.</span>
+    <div class="hero-meta">${heroMetaInner(h)}</div>
+    <button class="reshuffle" id="reshuffle" type="button" aria-label="Show another highlight">
+      ${ICON.refresh}<span>Another line</span>
+    </button>
+    <span id="hero-sr" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
+  </div>`;
+}
+
+function wireHeroBook() {
+  const b = document.querySelector("#hero .hero-book");
+  if (b) b.onclick = () => jumpToHighlight(Number(b.dataset.bookidx), Number(b.dataset.hlidx));
+}
+function wireHero() {
+  const reshuffle = () => {
+    const next = pickHero(heroPool(state.flat));
+    if (!next) return;
+    const box = document.getElementById("hero");
+    const apply = () => {
+      const q = document.querySelector("#hero .hero-q");
+      const meta = document.querySelector("#hero .hero-meta");
+      if (q) q.innerHTML = markEmphasis(next.text);
+      if (meta) meta.innerHTML = heroMetaInner(next);
+      wireHeroBook();   // re-attach: the book button was just re-rendered
+      // announce the new line so AT users perceive the reshuffle (the quote text
+      // is the content; the in-place innerHTML swap is otherwise silent)
+      const sr = document.getElementById("hero-sr");
+      if (sr) sr.textContent = next.text;
+    };
+    if (prefersReducedMotion() || !box) { apply(); return; }
+    box.style.transition = "opacity var(--dur-mid)";
+    box.style.opacity = "0";
+    // delay is conditional so a reduced-motion pref detected after this click
+    // collapses immediately instead of holding the update behind a dead timer
+    setTimeout(() => { apply(); box.style.opacity = "1"; }, prefersReducedMotion() ? 0 : 200);
+  };
+  const q = document.getElementById("hero-quote");
+  const r = document.getElementById("reshuffle");
+  if (q) q.onclick = reshuffle;
+  if (r) r.onclick = reshuffle;
+  wireHeroBook();
+}
+
+function maybeRenderHero() {
+  const slot = document.getElementById("hero-slot");
+  if (!slot) return;
+  // shown only when there's no active query AND there is at least one highlight
+  if (state.q.trim() || !(state.flat && state.flat.length)) { slot.innerHTML = ""; return; }
+  const h = pickHero(heroPool(state.flat));
+  if (!h) { slot.innerHTML = ""; return; }
+  slot.innerHTML = heroHTML(h);
+  wireHero();
+  revealAll(slot.querySelectorAll(".reveal"));
+}
+
+/* ---------- highlight-level search (hybrid) ----------
+   AND-match every term across text + note. Term highlighting escapes the FULL
+   untrusted string first, then wraps matches in <mark> over the ALREADY-ESCAPED
+   string — so a line containing <script> or </mark> is inert (it became
+   &lt;script&gt; / &lt;/mark&gt; before any <mark> was inserted). */
+const SEARCH_CAP = 200;
+
+function searchTerms(q) {
+  return q.toLowerCase().split(/\s+/).filter(Boolean);
+}
+function highlightMatches(flat, terms) {
+  return (flat || []).filter((h) => {
+    const hay = (h.text + " " + h.note).toLowerCase();
+    return terms.every((t) => hay.includes(t));
+  });
+}
+/* Find term matches on the RAW (unescaped) text, then emit esc(segment) around
+   <mark>esc(match)</mark>. Matching on the raw string avoids corrupting HTML
+   entities (the old approach escaped first, so searching "amp" split "&amp;"
+   into "&<mark>amp</mark>;"). XSS-safety is preserved: every emitted run of book
+   content passes through esc(); the only literal HTML is the <mark> we control. */
+function markTerms(text, terms) {
+  const src = String(text == null ? "" : text);
+  const parts = terms.map((t) => t && t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).filter(Boolean);
+  if (!parts.length) return esc(src);
+  const re = new RegExp("(" + parts.join("|") + ")", "gi");
+  let out = "", last = 0, m;
+  while ((m = re.exec(src)) !== null) {
+    out += esc(src.slice(last, m.index)) + "<mark>" + esc(m[0]) + "</mark>";
+    last = m.index + m[0].length;
+    if (m.index === re.lastIndex) re.lastIndex++;   // guard against a zero-width match
+  }
+  return out + esc(src.slice(last));
+}
+
+function renderSearchResults(q) {
+  const terms = searchTerms(q);
+  const hits = highlightMatches(state.flat || [], terms);
+  const results = document.getElementById("results");
+  const count = document.getElementById("count");
+  if (!results) return;
+  results.hidden = false;
+
+  if (!hits.length) {
+    results.innerHTML = `<div class="empty results-empty" tabindex="-1">
+      <p class="big">No highlights match “${esc(q)}”.</p>
+      <p>Try a different word, or clear the search to return to your books.
+         Markwell searches the words inside your highlights and notes — not book titles.</p>
+    </div>`;
+    if (count) count.textContent = "";
+    announceSearch(`No highlights match ${q}.`);
+    return;
+  }
+
+  const shown = hits.slice(0, SEARCH_CAP);
+  const rows = shown.map((h) => {
+    // surface the note line only when the match was actually in the note, so a
+    // searcher who remembers a word from their own annotation can see why this
+    // row matched (the empty-state copy promises Markwell searches notes too).
+    const noteHit = h.note && terms.some((t) => h.note.toLowerCase().includes(t));
+    const note = noteHit
+      ? `<div class="rnote"><b>Your note:</b> ${markTerms(h.note, terms)}</div>` : "";
+    return `
+    <button class="search-result" type="button" data-bookidx="${h.bookIdx}" data-hlidx="${h.hlIdx}"
+            aria-label="Open ${esc(h.bookTitle)} at this highlight">
+      <div class="rtext">${markTerms(h.text, terms)}</div>${note}
+      <div class="rmeta"><span class="rb">${esc(h.bookTitle)}</span>${
+        h.date ? `<span class="sep" aria-hidden="true"></span><span>${esc(h.date)}</span>` : ""}</div>
+    </button>`;
+  }).join("");
+
+  const more = hits.length > SEARCH_CAP
+    ? `<p class="results-more">Showing the first ${SEARCH_CAP} of ${hits.length.toLocaleString()} matches — type a more specific word to narrow them.</p>`
+    : "";
+
+  results.innerHTML = rows + more;
+  if (count) count.textContent =
+    `${hits.length.toLocaleString()} highlight${hits.length === 1 ? "" : "s"} match`;
+  announceSearch(`${hits.length} highlight${hits.length === 1 ? "" : "s"} match ${q}.`);
+
+  results.querySelectorAll(".search-result").forEach((el) => {
+    el.onclick = () => jumpToHighlight(Number(el.dataset.bookidx), Number(el.dataset.hlidx));
+  });
+}
+
 /* ---------- view: Library ---------- */
 async function renderLibrary() {
   await loadStatus();
@@ -325,6 +690,7 @@ async function renderLibrary() {
 
   view.innerHTML = `<div class="wrap">
     ${lib.source_kind === "sample" ? sampleBanner() : ""}
+    <div id="hero-slot"></div>
     <h1 class="page-title">Your library</h1>
     <p class="page-sub">${books.length} book${books.length === 1 ? "" : "s"} ·
        ${totalHl.toLocaleString()} highlights &amp; notes</p>
@@ -337,49 +703,57 @@ async function renderLibrary() {
     </div>
     <span id="search-sr" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
     <div class="grid" id="grid"></div>
-    <div class="empty" id="noMatch" hidden><p></p></div>
+    <div class="results" id="results" hidden></div>
   </div>`;
 
   wireSampleBanner();
   const input = document.getElementById("q");
   input.oninput = () => { state.q = input.value; refreshGrid(); };
-  refreshGrid();
+  maybeRenderHero();   // fills #hero-slot iff no query and the library has highlights
+  refreshGrid();       // branches: no query → book grid; query → highlight results
   if (state.q) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
 }
 
+/* The hybrid switch. No query → the book grid (the original behaviour). A query →
+   hide grid + hero and show highlight-level results. The function name stays
+   refreshGrid since it's the #q input handler target; only its job widened. */
 function refreshGrid() {
-  const books = (state.lib && state.lib.books) || [];
-  const q = state.q.trim().toLowerCase();
-  // most-highlighted first (mirrors the Markdown index), then title
-  const matches = (q ? books.filter((b) => bookMatches(b, q)) : books.slice())
-    .sort((a, b) => b.highlights.length - a.highlights.length
-      || (a.title || "").localeCompare(b.title || ""));
-
+  const q = state.q.trim();
   const grid = document.getElementById("grid");
-  if (grid) grid.innerHTML = matches.map(bookCard).join("");
+  const results = document.getElementById("results");
+  const heroSlot = document.getElementById("hero-slot");
 
-  const count = document.getElementById("count");
-  if (count) count.textContent = q ? `${matches.length} of ${books.length} books match` : "";
-
-  const nm = document.getElementById("noMatch");
-  if (nm) {
-    nm.hidden = matches.length !== 0;
-    const p = nm.querySelector("p");
-    if (p) p.textContent = q ? `No highlights match “${state.q}”.` : "No books yet.";
+  if (!q) {
+    if (results) { results.hidden = true; results.innerHTML = ""; }
+    if (grid) grid.hidden = false;
+    renderBookGrid();
+    // restore the hero once when the query clears (don't reshuffle on every keystroke)
+    if (heroSlot && !heroSlot.children.length) maybeRenderHero();
+    setScrollContext({ progress: false, fab: false });   // no long-scroll FAB on the grid
+    return;
   }
-  // announce results to screen readers, debounced so typing doesn't spam
-  announceSearch(!q ? "" : matches.length
-    ? `${matches.length} of ${books.length} books match`
-    : `No highlights match ${state.q}.`);
-  wireCards();
+  if (heroSlot) heroSlot.innerHTML = "";
+  if (grid) { grid.hidden = true; grid.innerHTML = ""; }
+  renderSearchResults(q);
+  // a broad term can list up to SEARCH_CAP rows — offer the scroll-to-top FAB
+  // (but not the reading-progress bar, which tracks a book's reading position)
+  setScrollContext({ progress: false, fab: true });
 }
 
-function bookMatches(b, q) {
-  if ((b.title || "").toLowerCase().includes(q)) return true;
-  if ((b.author || "").toLowerCase().includes(q)) return true;
-  return b.highlights.some((h) =>
-    (h.text || "").toLowerCase().includes(q) ||
-    (h.note || "").toLowerCase().includes(q));
+/* The no-query book grid: every book, most-highlighted first (mirrors the Markdown
+   index), then title. Book-level filtering is gone — search is highlight-level now
+   (spec §C), so the grid no longer narrows while typing. */
+function renderBookGrid() {
+  const books = (state.lib && state.lib.books) || [];
+  const sorted = books.slice().sort((a, b) =>
+    b.highlights.length - a.highlights.length
+    || (a.title || "").localeCompare(b.title || ""));
+  const grid = document.getElementById("grid");
+  if (grid) grid.innerHTML = sorted.map(bookCard).join("");
+  const count = document.getElementById("count");
+  if (count) count.textContent = "";   // count is meaningful only while searching
+  announceSearch("");
+  wireCards();
 }
 
 function yearSpan(b) {
@@ -405,13 +779,20 @@ function wireCards() {
   });
 }
 
-/* ---------- view: Book detail ---------- */
+/* ---------- view: Book detail ----------
+   Each highlight is a <li id="hl-{bookIdx}-{hlIdx}"> where hlIdx is the running
+   index across the WHOLE book.highlights array — the exact coordinate the flat
+   index (buildFlatIndex) stamps, so a hero/search click can jump straight here.
+   Per-highlight copy buttons reveal on hover/focus; the book closes on an
+   ornament + a way back. After render we wire copy, reveal, turn the reading bar
+   + FAB on, then honour any pending jump (scroll + flash). */
 async function renderBook(arg) {
   await loadStatus();
   const source = state.source === "sample" ? "sample"
     : (state.status.has_library ? state.source : "latest");
   const lib = await loadLibrary(source);
-  const book = (lib.books || [])[Number(arg)];
+  const bookIdx = Number(arg);
+  const book = (lib.books || [])[bookIdx];
   if (!book) { location.hash = "#/library"; return; }
 
   const n = book.highlights.length;
@@ -419,7 +800,7 @@ async function renderBook(arg) {
 
   // group highlights into <h2> chapter + <ul> sections (valid list semantics)
   let body = "", lastChap = null, open = false;
-  book.highlights.forEach((h) => {
+  book.highlights.forEach((h, hlIdx) => {
     if (h.chapter_index !== lastChap) {
       if (open) body += "</ul>";
       body += `<h2 class="chapter">Chapter ${esc(h.chapter_index)}</h2><ul class="hl-list">`;
@@ -427,10 +808,26 @@ async function renderBook(arg) {
       lastChap = h.chapter_index;
     }
     const note = h.note ? `<div class="note"><b>Your note:</b> ${esc(h.note)}</div>` : "";
-    const date = h.date ? `<div class="date">${esc(h.date)}</div>` : "";
-    body += `<li class="hl"><div class="text">${esc(h.text)}</div>${note}${date}</li>`;
+    const date = h.date ? `<span class="date">${esc(h.date)}</span>` : "";
+    body += `<li class="hl reveal" id="hl-${bookIdx}-${hlIdx}">
+      <div class="text">${esc(h.text)}</div>${note}
+      <div class="hl-foot">
+        ${date}
+        <button class="copy" type="button" aria-label="Copy this highlight" data-hlidx="${hlIdx}">${ICON.copy}<span>Copy</span></button>
+      </div>
+    </li>`;
   });
   if (open) body += "</ul>";
+
+  // a warm close: an ornament, a count, and a way back to the shelf
+  const endMsg = n === 1
+    ? "That's the only highlight from this book."
+    : `That's every highlight from this book — ${n} in all.`;
+  const endBlock = `<div class="book-end">
+    <div class="orn" aria-hidden="true">❊ ❊ ❊</div>
+    <p class="be-msg">${endMsg}</p>
+    <a class="btn" href="#/library">${ICON.back}<span>Back to your library</span></a>
+  </div>`;
 
   view.innerHTML = `<div class="wrap">
     <a class="back" href="#/library">${ICON.back}<span>All books</span></a>
@@ -439,8 +836,96 @@ async function renderBook(arg) {
       ${book.author ? `<div class="by">${esc(book.author)}</div>` : ""}
       <div class="stat">${n} highlight${n === 1 ? "" : "s"} &amp; notes${span ? " · " + esc(span) : ""}</div>
     </header>
-    ${body}
+    ${body}${endBlock}
   </div>`;
+
+  wireCopyButtons(book);
+  revealAll(view.querySelectorAll(".hl.reveal"));
+  setScrollContext({ progress: true, fab: true });   // reading bar + FAB on for this view
+  consumeJumpTo(bookIdx);                             // scroll + flash if we arrived via a jump
+}
+
+/* ---------- per-highlight copy ----------
+   Copies "the line, a blank line, then —《title》". Prefers the async Clipboard
+   API; falls back to a hidden <textarea> + execCommand; if even that fails, a warm
+   toast tells the reader to select + copy by hand (never a silent failure or throw).
+   Untrusted text never reaches innerHTML here — the payload is written to the
+   clipboard as a plain string; only our own ICON markup is ever set on the button. */
+function copyPayload(text, title) {
+  return `${text}\n\n—《${title}》`;
+}
+function fallbackCopy(s) {
+  const ta = document.createElement("textarea");
+  ta.value = s;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.top = "-1000px";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (_) { ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
+function wireCopyButtons(book) {
+  const title = book.title || "";
+  view.querySelectorAll(".copy").forEach((btn) => {
+    btn.onclick = () => {
+      const h = book.highlights[Number(btn.dataset.hlidx)];
+      if (!h) return;
+      const payload = copyPayload(h.text || "", title);
+      const done = () => copiedFeedback(btn);
+      const fail = () => {
+        if (fallbackCopy(payload)) done();
+        else toast("Couldn't copy — you can select the text and copy it manually.");
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(payload).then(done).catch(fail);
+      } else {
+        fail();
+      }
+    };
+  });
+}
+function copiedFeedback(btn) {
+  btn.classList.add("done");
+  btn.innerHTML = `${ICON.check}<span>Copied</span>`;   // our own markup only
+  toast("Highlight copied.");                            // existing role=status toast announces it
+  setTimeout(() => {
+    if (btn.isConnected) { btn.classList.remove("done"); btn.innerHTML = `${ICON.copy}<span>Copy</span>`; }
+  }, 1800);
+}
+
+/* ---------- jump consumption (hero / search → reader anchor) ----------
+   One-shot: clear state.jumpTo no matter what, so a later direct navigation to the
+   same book opens at the top. Forces the target .reveal element visible BEFORE
+   scrolling (so we never scroll to an opacity:0 node), then centres + flashes it.
+   Missing book/anchor or a stale jump degrades to "open at top" — never an error. */
+function consumeJumpTo(bookIdx) {
+  const jt = state.jumpTo;
+  state.jumpTo = null;
+  if (!jt || jt.bookIdx !== bookIdx) return;
+  const target = document.getElementById(`hl-${bookIdx}-${jt.hlIdx}`);
+  if (!target) return;
+  target.classList.add("in");   // ensure revealed before we scroll to it
+  const behavior = prefersReducedMotion() ? "auto" : "smooth";
+  // let the just-set innerHTML settle a frame, then scroll + flash
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ block: "center", behavior });
+    flashHighlight(target);
+  });
+}
+function flashHighlight(node) {
+  // JS-driven animation bypasses the reduced-motion CSS block, so guard here too
+  if (prefersReducedMotion() || typeof node.animate !== "function") return;
+  // End on the page background, NOT 'transparent': WebKit interpolates a green rgba
+  // toward transparent (= rgba(0,0,0,0)) through premultiplied black, flashing dark
+  // mid-fade. The .hl element's resting background already is var(--bg), so this
+  // settles invisibly while keeping the fade green throughout.
+  node.animate(
+    [{ backgroundColor: "var(--marker)" }, { backgroundColor: "var(--bg)" }],
+    { duration: 1500, easing: "ease-out" });
 }
 
 /* ---------- view: History ---------- */
@@ -620,6 +1105,8 @@ function showError() {
 /* ---------- start ---------- */
 const quitButton = document.getElementById("quit-app");
 if (quitButton) quitButton.onclick = quitApp;
+initTheme();
+initScrollToTop();
 sendHeartbeat();
 heartbeatTimer = setInterval(sendHeartbeat, 15000);
 route(false);

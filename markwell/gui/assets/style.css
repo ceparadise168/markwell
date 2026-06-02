@@ -1,5 +1,14 @@
 /* Markwell GUI — one calm, literary visual system. Light + dark, CJK-aware. */
 
+/* Theming model — three states, no build step:
+   1. No choice yet  → the @media (prefers-color-scheme) block below follows the OS.
+   2. User chose dark → [data-theme="dark"] (set on <html> by app.js) wins.
+   3. User chose light→ [data-theme="light"] wins, even on a dark OS.
+   Because [data-theme] sits on the same element as :root, specificity ties with
+   the media query — so the override blocks are placed AFTER the @media block and
+   win on SOURCE ORDER. Do not "dedupe" the dark/light values into the media query
+   with :is()/nesting: that reintroduces the specificity fragility this avoids.
+   (name = signal: media = system default, [data-theme] = explicit user override.) */
 :root {
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", "PingFang TC", "PingFang SC", "Microsoft JhengHei",
@@ -26,6 +35,20 @@
   --r: 14px;
   --r-sm: 9px;
   --rail: 252px;
+
+  /* green highlighter ink (brand accent used as ink-on-paper emphasis); flips
+     with the theme. Used by .marker-em (hero opening clause), <mark> (search
+     hits) and ::selection — see "atmosphere" section below. */
+  --marker: rgba(46, 125, 107, .22);          /* from --accent #2E7D6B */
+  --marker-strong: rgba(46, 125, 107, .34);
+
+  /* motion vocabulary — every animated element references these exact curves so
+     timing stays coherent across the app. Theme-independent: defined once here. */
+  --ease-out: cubic-bezier(.16, .84, .3, 1);  /* reveal, view-level entrances */
+  --ease-spring: cubic-bezier(.2, .7, .2, 1); /* hover lifts, FAB, reshuffle */
+  --dur-fast: .18s;                            /* hover/focus reveal, color shifts */
+  --dur-mid: .35s;                             /* FAB show/hide, hero fade */
+  --dur-slow: .7s;                             /* reveal-on-scroll translate+fade */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -46,7 +69,52 @@
     --danger-soft: #2c1d1c;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3);
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 34px rgba(0, 0, 0, .4);
+    --marker: rgba(138, 214, 196, .20);       /* from dark --accent-ink #8ad6c4 */
+    --marker-strong: rgba(138, 214, 196, .30);
   }
+}
+
+/* Explicit user choice — must appear AFTER the @media block (same element as
+   :root → source order decides). data-theme is unset until the user toggles. */
+[data-theme="dark"] {
+  --bg: #15130f;
+  --surface: #201d18;
+  --surface-2: #1a1713;
+  --ink: #ece6dc;
+  --ink-soft: #b7afa3;
+  --ink-faint: #9a9286;
+  --line: #322c24;
+  --accent: #1a7d6a;
+  --accent-ink: #8ad6c4;
+  --accent-soft: #1d2a26;
+  --warn: #d3a35a;
+  --warn-soft: #2a2418;
+  --danger: #e08079;
+  --danger-soft: #2c1d1c;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 34px rgba(0, 0, 0, .4);
+  --marker: rgba(138, 214, 196, .20);
+  --marker-strong: rgba(138, 214, 196, .30);
+}
+[data-theme="light"] {
+  --bg: #faf8f3;
+  --surface: #ffffff;
+  --surface-2: #f3efe7;
+  --ink: #221f1b;
+  --ink-soft: #57514a;
+  --ink-faint: #6f685e;
+  --line: #e8e1d5;
+  --accent: #2e7d6b;
+  --accent-ink: #205a4d;
+  --accent-soft: #e4f0ec;
+  --warn: #7d5616;
+  --warn-soft: #f6ecd8;
+  --danger: #a8403a;
+  --danger-soft: #f6e4e2;
+  --shadow-sm: 0 1px 2px rgba(40, 33, 22, .05);
+  --shadow: 0 1px 2px rgba(40, 33, 22, .05), 0 10px 30px rgba(40, 33, 22, .07);
+  --marker: rgba(46, 125, 107, .22);
+  --marker-strong: rgba(46, 125, 107, .34);
 }
 
 * { box-sizing: border-box; }
@@ -246,15 +314,20 @@ a { color: inherit; }
   width: 100%; font: inherit; color: var(--ink);
   padding: 11px 14px 11px 40px; border-radius: var(--r-sm);
   border: 1px solid var(--line); background: var(--surface);
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
 .search input::placeholder { color: var(--ink-faint); }
+/* on-element accent border (not the generic outline, whose 4px radius would
+   square off this 9px-radius field) — matches every other focusable surface */
+.search input:focus-visible { border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent); outline: none; }
 .count-note { color: var(--ink-faint); font-size: .9rem; }
 
 /* ---- book grid ---- */
 .grid { display: grid; gap: 16px;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .book-card {
-  text-align: left; cursor: pointer; display: flex; flex-direction: column;
+  font: inherit; text-align: left; cursor: pointer; display: flex; flex-direction: column;
   gap: 10px; padding: 20px; min-height: 150px;
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--r); box-shadow: var(--shadow-sm);
@@ -270,6 +343,74 @@ a { color: inherit; }
 .book-card .bc-count { color: var(--accent-ink); font-weight: 650; }
 .pill { display: inline-block; padding: 2px 9px; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent-ink); font-size: .8rem; font-weight: 600; }
+
+/* ---- resurface-a-line hero (Library landing) ----
+   A single line to revisit, in the reading serif, with a green highlighter sweep
+   on the opening clause. Sizes use clamp() so it scales without media rules. */
+.hero-line { text-align: center; padding: clamp(28px, 5vw, 48px) 0 clamp(20px, 3vw, 32px); }
+.hero-eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: .68rem;
+  font-weight: 700; color: var(--ink-faint); margin: 0 0 clamp(16px, 3vw, 24px); }
+.hero-quote { display: block; width: 100%; max-width: 30em; margin: 0 auto; padding: 0;
+  border: 0; background: none; font: inherit; cursor: pointer; text-align: center; }
+.hero-q { font-family: var(--font-read); font-size: clamp(1.4rem, 3vw, 2rem); line-height: 1.55;
+  color: var(--ink); letter-spacing: .003em; text-wrap: balance;
+  display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+  transition: color var(--dur-fast); }
+/* the whole quote is a button (click = reshuffle); give sighted mouse users a
+   hover affordance, using the same accent-ink token as .hero-book hover. Keyboard
+   focus keeps the global :focus-visible outline (the stronger, WCAG-grade cue). */
+.hero-quote:hover .hero-q, .hero-quote:focus-visible .hero-q { color: var(--accent-ink); }
+.hero-meta { margin-top: 18px; display: flex; align-items: center; justify-content: center;
+  gap: 10px; flex-wrap: wrap; font-size: .9rem; color: var(--ink-soft); }
+.hero-book { border: 0; background: none; cursor: pointer; font: inherit; font-weight: 650;
+  color: var(--accent-ink); border-bottom: 1px solid transparent; padding: 0;
+  transition: border-color var(--dur-fast); }
+.hero-book:hover { border-bottom-color: var(--accent); }
+.hero-sep { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+.hero-date { font-style: italic; font-size: .88rem; color: var(--ink-faint); }
+.reshuffle { margin-top: 22px; display: inline-flex; align-items: center; gap: 8px;
+  font: inherit; font-size: .85rem; font-weight: 600; color: var(--ink-soft);
+  background: var(--surface); border: 1px solid var(--line); padding: 9px 18px;
+  border-radius: 999px; cursor: pointer; box-shadow: var(--shadow-sm);
+  transition: color var(--dur-fast), border-color var(--dur-fast),
+              transform var(--dur-fast) var(--ease-spring); }
+.reshuffle:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-1px); }
+.reshuffle:active { transform: scale(.97); }
+.reshuffle svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.9;
+  stroke-linecap: round; stroke-linejoin: round; }
+
+/* green highlighter sweep — ink sits on the lower 40% of the line, like a marker.
+   Tokens (--marker / --marker-strong) flip with the theme; see :root. */
+.marker-em { background: linear-gradient(transparent 60%, var(--marker) 60%);
+  padding: 0 .04em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+
+/* ---- highlight-level search results ----
+   Rows mirror the History .snap rhythm (1px top rule, generous padding) so the app
+   feels of-a-piece. Each row is a <button>, so it's keyboard-focusable for free. */
+.results { display: flex; flex-direction: column; }
+.search-result { text-align: left; background: none; border: 0; border-top: 1px solid var(--line);
+  padding: 20px 8px; cursor: pointer; border-radius: 8px; font: inherit;
+  transition: background var(--dur-fast); }
+.search-result:first-child { border-top: 0; }
+.search-result:hover { background: var(--surface-2); }
+.search-result .rtext { font-family: var(--font-read); font-size: 1.08rem; line-height: 1.7; color: var(--ink);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.search-result .rnote { margin-top: 8px; font-family: var(--font-read); font-size: .95rem;
+  line-height: 1.55; color: var(--ink-soft);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.search-result .rnote b { color: var(--ink); font-weight: 650; }
+.search-result .rmeta { margin-top: 10px; display: flex; align-items: center; gap: 8px;
+  font-size: .82rem; color: var(--ink-faint); }
+.search-result .rmeta .rb { color: var(--accent-ink); font-weight: 650; }
+.search-result .rmeta .sep { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+.results-more { margin: 18px 8px 0; font-size: .85rem; color: var(--ink-faint); }
+.results-empty { padding: 44px 16px; }
+.results-empty .big { font-family: var(--font-read); font-size: 1.25rem; color: var(--ink); margin: 0 0 8px; }
+
+/* search hits: a denser green pill so terms pop inside a clamped line */
+mark { background: var(--marker-strong); color: var(--ink); padding: 0 .08em; border-radius: 3px; }
+/* text selection adopts the same green marker so selecting feels consistent */
+::selection { background: var(--marker); color: var(--ink); }
 
 /* ---- book detail ---- */
 .back {
@@ -294,7 +435,38 @@ a { color: inherit; }
 .hl .note { margin-top: 11px; padding: 11px 14px; border-radius: var(--r-sm);
   background: var(--surface-2); font-size: .96rem; color: var(--ink-soft); }
 .hl .note b { color: var(--ink); font-weight: 650; }
-.hl .date { margin-top: 8px; font-size: .82rem; color: var(--ink-faint); font-style: italic; }
+
+/* foot row: date (when present, pushed left) + copy button (always right).
+   margin-right:auto on the date keeps the button right-aligned whether or not a
+   date is there — no empty-placeholder hack and no space-between juggling. */
+.hl-foot { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.hl .date { font-size: .82rem; color: var(--ink-faint); font-style: italic; margin-right: auto; }
+
+.copy {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  margin-left: auto;                               /* right-align even when no date precedes it */
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-faint);
+  font: inherit; font-size: .78rem; font-weight: 600; padding: 5px 11px;
+  border-radius: var(--r-sm); cursor: pointer; opacity: 0;
+  transition: opacity var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast),
+              background var(--dur-fast), transform var(--dur-fast);
+}
+/* reveal on hover OR keyboard focus — without :focus-within / :focus-visible a
+   keyboard user could tab to an opacity:0 button they can't see (it's still in
+   the tab order; these rules just make it visible once focused) */
+.hl:hover .copy, .hl:focus-within .copy, .copy:focus-visible { opacity: 1; }
+.copy:hover { color: var(--accent); border-color: var(--accent); background: var(--surface-2); }
+.copy:active { transform: scale(.95); }
+.copy.done { color: var(--accent); border-color: var(--accent); opacity: 1; }
+.copy svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.9;
+  stroke-linecap: round; stroke-linejoin: round; }
+@media (hover: none) { .copy { opacity: .6; } }   /* touch: no hover, keep it faintly visible */
+
+/* a warm close to each book */
+.book-end { text-align: center; padding: clamp(36px, 6vw, 56px) 0 24px; }
+.book-end .orn { color: var(--ink-faint); letter-spacing: .5em; font-size: 1rem; margin-bottom: 16px; }
+.book-end .be-msg { color: var(--ink-soft); font-size: .95rem; margin: 0 0 20px; }
+.book-end .btn { display: inline-flex; }
 
 /* ---- history ---- */
 .path-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -347,6 +519,95 @@ details.advanced summary { cursor: pointer; color: var(--ink-soft); font-weight:
 .inline-msg { padding: 13px 16px; border-radius: var(--r-sm); margin-top: 16px; }
 .inline-msg.err { background: var(--danger-soft); color: var(--danger); }
 
+/* ======================================================================
+   ATMOSPHERE  —  paper warmth, reveal-on-scroll, reading progress, FAB,
+   day/night toggle. Defined here; the reveal/progress/FAB hooks are
+   populated by the Library + Reader views. All motion uses §0 tokens and
+   is neutralised under prefers-reduced-motion (see the block at file end).
+   ====================================================================== */
+
+/* ---- paper warmth (two fixed decorative layers behind all content) ---- */
+.bg-wash {
+  position: fixed; inset: 0; z-index: -2; pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 50% -10%, var(--surface-2) 0%, transparent 55%),
+    radial-gradient(140% 120% at 50% 120%, var(--surface-2) 0%, transparent 60%),
+    var(--bg);
+}
+.bg-grain {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  opacity: .03; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+/* on dark paper the grain must lighten, not darken */
+[data-theme="dark"] .bg-grain { mix-blend-mode: screen; opacity: .04; }
+@media (prefers-color-scheme: dark) {
+  .bg-grain { mix-blend-mode: screen; opacity: .04; }
+}
+/* …but if the user explicitly chose light on a dark OS, restore the dark-on
+   ink so the media-query rule above doesn't leak through */
+[data-theme="light"] .bg-grain { mix-blend-mode: multiply; opacity: .03; }
+
+/* ---- reveal on scroll (fail-open: an element is hidden ONLY when JS has
+   added html.js AND .reveal AND not .in — so a JS failure leaves content
+   that was never opted in fully visible) ---- */
+html.js .reveal:not(.in) { opacity: 0; transform: translateY(14px); }
+.reveal {
+  transition: opacity var(--dur-slow) var(--ease-out),
+              transform var(--dur-slow) var(--ease-out);
+}
+
+/* ---- reading progress bar (decorative; book view only). Distinct id from the
+   Back-up page's export #progress box — this one is #read-progress. Width is
+   set imperatively per scroll (not transitioned, so it can't lag the scroll);
+   only its show/hide opacity animates. ---- */
+.read-progress {
+  position: fixed; top: 0; left: 0; height: 2px; width: 0; z-index: 60;
+  background: linear-gradient(90deg, var(--accent), var(--accent-ink));
+  opacity: 0; transition: opacity var(--dur-mid) ease;
+}
+.read-progress.show { opacity: 1; }
+
+/* ---- scroll-to-top FAB ---- */
+.to-top {
+  position: fixed; right: clamp(16px, 3vw, 28px); bottom: clamp(16px, 3vw, 28px);
+  z-index: 55; width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface); border: 1px solid var(--line); color: var(--ink-soft);
+  box-shadow: var(--shadow); cursor: pointer;
+  opacity: 0; transform: translateY(10px) scale(.9); pointer-events: none;
+  transition: opacity var(--dur-mid), transform var(--dur-mid) var(--ease-spring),
+              color var(--dur-fast), border-color var(--dur-fast);
+}
+.to-top.show { opacity: 1; transform: none; pointer-events: auto; }
+.to-top:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-3px); }
+.to-top:active { transform: scale(.92); }
+.to-top svg {
+  width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ---- day / night toggle (sidebar foot). The button always holds both icons;
+   app.js sets html.is-dark to reflect the *effective* theme (works even when
+   data-theme is unset, i.e. the system-default case). We show the DESTINATION
+   icon: in dark, show the sun ("switch to day"); in light, show the moon. ---- */
+.theme-toggle {
+  display: inline-flex; align-items: center; gap: 9px; width: 100%;
+  padding: 9px 10px; margin-bottom: 10px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
+  font: inherit; font-size: .82rem; font-weight: 550; cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.theme-toggle:hover { background: var(--surface-2); color: var(--ink); }
+.theme-toggle svg {
+  width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor;
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+.theme-toggle .label { white-space: nowrap; }
+.ico-sun, .ico-moon { display: none; }
+html.is-dark .ico-sun { display: inline-flex; }
+html:not(.is-dark) .ico-moon { display: inline-flex; }
+
 /* ---- toast ---- */
 .toast {
   position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
@@ -364,10 +625,22 @@ details.advanced summary { cursor: pointer; color: var(--ink-soft); font-weight:
   .nav { flex-direction: row; flex: 1; justify-content: flex-end; }
   .nav a { flex-direction: column; gap: 3px; padding: 7px 12px; }
   .nav a span { font-size: .66rem; }
-  .sidebar-foot { display: none; }
+  /* keep the foot laid out so the day/night toggle stays reachable on mobile,
+     but drop the reassurance prose + version (they belong to the wide rail) */
+  .sidebar-foot { display: block; margin-top: 0; padding: 0; }
+  .sidebar-foot .reassure, .sidebar-foot .version { display: none; }
+  .theme-toggle { width: auto; margin: 0; padding: 8px; }
+  .theme-toggle .label { display: none; }   /* icon-only; aria-label stays authoritative */
   .main { padding: 22px 18px 60px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .001ms !important; transition: none !important; }
+  /* belt-and-suspenders: reveal content can never be stuck hidden, even if
+     html.js is set and JS-driven .animate()/style mutations are skipped */
+  .reveal { opacity: 1 !important; transform: none !important; }
+  /* the spinner is the one infinitely-repeating animation; a .001ms period would
+     still spin it continuously (WCAG 2.3.3). Stop it and keep a static accent arc
+     so "working" is still legible without motion. */
+  .spinner { animation: none !important; border-top-color: var(--accent); }
 }
