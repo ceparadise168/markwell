@@ -150,3 +150,25 @@ wholesale on every navigation, so the choice reset before the hero backup ran. (
 
 **Re-verified:** 69 tests pass; zero console errors; format persistence, keyboard nav, and
 search a11y confirmed in a live browser.
+
+---
+
+## Round 4 — final convergence check
+
+**Plan.** A lean 2-agent pass: regressions from Round 3 + a holistic last sweep.
+
+**Check.** **Converged:** 3 raised, 2 confirmed, **0 blocking** (no P0/P1). Both were
+pre-existing latent issues, not Round-3 regressions:
+- **P2:** the skip-link (`href="#view"`) fired `route()`, which treated `"view"` as an
+  unknown route and re-rendered the Backup screen (clearing the nav highlight) — and the
+  `pollGen++` on that path would have silently stopped a running backup's progress UI.
+- **P3:** the format chips work as a radio group but had no group label for assistive tech.
+
+**Act — fixed both:**
+- `route()` now ignores unknown fragments (just moves focus to `<main>`), so the skip-link
+  jumps to content without re-rendering or disturbing a running backup. **Verified live:**
+  activating it on Library keeps Library rendered with its nav highlight, focus on `<main>`.
+- The format chips' container got `role="group"` + an accessible label.
+
+**Outcome:** the review has converged — three review rounds drove confirmed findings from
+39 → 11 → 2-non-blocking. 69 tests pass; zero console errors. Stopping here.

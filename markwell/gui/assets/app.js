@@ -118,10 +118,16 @@ function setNav(name) {
 }
 
 async function route(focusMain) {
-  pollGen++;  // retire any export-poll loop from the view we're leaving
   const [name, arg] = parseHash();
+  // Unknown fragments (e.g. the "#view" skip-link target) must NOT re-render the
+  // app or retire a running backup's poll loop — just move focus to the content.
+  if (!Object.prototype.hasOwnProperty.call(routes, name)) {
+    if (focusMain) view.focus();
+    return;
+  }
+  pollGen++;  // a real view change retires the poll loop from the view we're leaving
   setNav(name === "book" ? "library" : name);
-  const fn = routes[name] || renderBackup;
+  const fn = routes[name];
   view.innerHTML = '<div class="wrap"><div class="route-load"><span class="spinner"></span></div></div>';
   try {
     await fn(arg);
@@ -440,7 +446,7 @@ async function renderHistory() {
       <details class="advanced">
         <summary>Export options</summary>
         <p class="count-note" style="margin:10px 0 0">Choose which kinds of files to create when you back up.</p>
-        <div class="fmt-row" id="fmt">
+        <div class="fmt-row" id="fmt" role="group" aria-label="Which files to create">
           ${fmtChip("all", "Both", currentFmt())}
           ${fmtChip("md", "Readable text", currentFmt())}
           ${fmtChip("json", "A data file", currentFmt())}
