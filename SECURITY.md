@@ -24,6 +24,24 @@ The `backups/` and `output/` directories may contain personal reading data.
 Treat them as you would any private notes; the project's `.gitignore` excludes
 them so they are never committed.
 
+## The local GUI app (`markwell-gui`)
+
+The optional graphical app runs a small local web server so your browser can be
+the interface. It is hardened to stay private to your machine:
+
+- **Binds `127.0.0.1` only**, on an automatically chosen free port — it is never
+  reachable from the network.
+- **Every `/api/*` request requires a per-launch secret token** embedded in the
+  page, so other programs or web pages on your machine can't drive it (CSRF).
+- **The `Host` header is allow-listed** to `127.0.0.1`/`localhost`, blocking
+  DNS-rebinding attacks.
+- **No CORS headers are sent**, so browsers refuse cross-origin reads, and a
+  **Content-Security-Policy** backs up the escaping of (untrusted) book text.
+- **Nothing the browser sends is used as a filesystem path or shell command** —
+  "Open folder" can only reveal Markwell's own data directories, via an argument
+  list (never a shell). It still **never writes to your Kobo.**
+- It makes **no network connections** and runs only while you keep it open.
+
 ## Reporting a vulnerability
 
 Please report security issues privately rather than opening a public issue.

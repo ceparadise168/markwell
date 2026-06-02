@@ -1,0 +1,284 @@
+"""HTTP transport for the GUI: routing, security, static files, launch.
+
+Thin shell over `service.Service`. It binds to 127.0.0.1 on an ephemeral port,
+serves the hand-written frontend and a small JSON API, and opens the browser.
+
+Security (a local server that can touch a device and write files must not be
+drivable by other processes or web pages):
+
+  * binds 127.0.0.1 only — never a routable address;
+  * a per-launch secret token is embedded in the page and required on every
+    /api/* call (blocks CSRF and any caller that didn't load our page);
+  * the Host header must be 127.0.0.1/localhost (blocks DNS-rebinding);
+  * no CORS headers are sent (browsers block cross-origin reads);
+  * a strict Content-Security-Policy backs up the (escaped) rendering of
+    untrusted book text;
+  * nothing the browser sends is ever used as a filesystem path or shell input.
+"""
+from __future__ import annotations
+
+import argparse
+import hmac
+import json
+import pathlib
+import secrets
+import sqlite3
+import sys
+import threading
+import webbrowser
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+from ..reader import UnsupportedSchemaError
+from .service import Service, default_data_dir
+
+_ASSETS = pathlib.Path(__file__).parent / "assets"
+_TOKEN_PLACEHOLDER = "__MARKWELL_TOKEN__"
+_MAX_BODY = 1 << 20  # request bodies are tiny JSON; cap to avoid memory abuse
+_CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self' "
+        "'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'")
+_STATIC = {
+    "/style.css": ("style.css", "text/css; charset=utf-8"),
+    "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+}
+
+
+class _Handler(BaseHTTPRequestHandler):
+    server_version = "Markwell"
+    protocol_version = "HTTP/1.1"
+
+    # quiet by default; only surface real problems on stderr
+    def log_message(self, fmt, *args):  # noqa: A003
+        if args and str(args[0]).startswith(("4", "5")):
+            sys.stderr.write("  http %s\n" % (fmt % args))
+
+    # -- security --------------------------------------------------------------
+
+    def _host_ok(self) -> bool:
+        return self.headers.get("Host") in self.server.allowed_hosts
+
+    def _token_ok(self) -> bool:
+        sent = self.headers.get("X-Markwell-Token", "")
+        return hmac.compare_digest(sent, self.server.token)
+
+    # -- response helpers ------------------------------------------------------
+
+    def _send(self, status, body: bytes, ctype: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", _CSP)
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _json(self, obj, status=HTTPStatus.OK) -> None:
+        body = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+        self._send(status, body, "application/json; charset=utf-8")
+
+    def _error(self, status, message) -> None:
+        self._json({"error": message}, status=status)
+
+    def _read_body(self) -> bytes | None:
+        """Read (and thereby drain) the request body. Returns None if it is over
+        the cap — draining matters so a rejected POST can't desync keep-alive."""
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > _MAX_BODY:
+            self.close_connection = True
+            return None
+        return self.rfile.read(length) if length > 0 else b""
+
+    def _dispatch(self, fn, *args) -> None:
+        """Run an API handler, turning backend errors into friendly JSON the UI
+        can display instead of dropping the connection."""
+        try:
+            fn(*args)
+        except UnsupportedSchemaError:
+            self._error(HTTPStatus.UNPROCESSABLE_ENTITY,
+                        "This saved copy is in a format Markwell doesn't "
+                        "recognize yet.")
+        except sqlite3.DatabaseError:
+            self._error(HTTPStatus.UNPROCESSABLE_ENTITY,
+                        "This saved copy could not be read — it may be damaged. "
+                        "Try another copy in History.")
+        except Exception:  # never let a handler kill the worker thread
+            self._error(HTTPStatus.INTERNAL_SERVER_ERROR,
+                        "Something unexpected went wrong.")
+
+    # -- routing ---------------------------------------------------------------
+
+    def do_GET(self) -> None:  # noqa: N802
+        if not self._host_ok():
+            self._error(HTTPStatus.FORBIDDEN, "bad host")
+            return
+        route = urlparse(self.path)
+        path = route.path
+
+        if path == "/":
+            self._send(HTTPStatus.OK, _load_index(self.server.token),
+                       "text/html; charset=utf-8")
+            return
+        if path in _STATIC:
+            self._serve_static(*_STATIC[path])
+            return
+        if path == "/favicon.ico":
+            self._send(HTTPStatus.NO_CONTENT, b"", "image/x-icon")
+            return
+
+        if path.startswith("/api/"):
+            if not self._token_ok():
+                self._error(HTTPStatus.FORBIDDEN, "bad token")
+                return
+            self._dispatch(self._api_get, path, parse_qs(route.query))
+            return
+        self._error(HTTPStatus.NOT_FOUND, "not found")
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        # Honor only cheap, side-effect-free routes; never run a device probe or
+        # snapshot read for a HEAD.
+        if not self._host_ok():
+            self._error(HTTPStatus.FORBIDDEN, "bad host")
+            return
+        path = urlparse(self.path).path
+        if path == "/":
+            self._send(HTTPStatus.OK, _load_index(self.server.token),
+                       "text/html; charset=utf-8")
+        elif path in _STATIC:
+            self._serve_static(*_STATIC[path])
+        elif path == "/favicon.ico":
+            self._send(HTTPStatus.NO_CONTENT, b"", "image/x-icon")
+        else:
+            self._error(HTTPStatus.METHOD_NOT_ALLOWED, "use GET")
+
+    def do_POST(self) -> None:  # noqa: N802
+        raw = self._read_body()  # always drain first (keep-alive safety)
+        if raw is None:
+            self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request too large")
+            return
+        if not self._host_ok():
+            self._error(HTTPStatus.FORBIDDEN, "bad host")
+            return
+        path = urlparse(self.path).path
+        if not path.startswith("/api/"):
+            self._error(HTTPStatus.NOT_FOUND, "not found")
+            return
+        if not self._token_ok():
+            self._error(HTTPStatus.FORBIDDEN, "bad token")
+            return
+        try:
+            body = json.loads(raw.decode("utf-8")) if raw else {}
+        except (ValueError, UnicodeDecodeError):
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        self._dispatch(self._api_post, path, body)
+
+    # -- API -------------------------------------------------------------------
+
+    def _api_get(self, path, query) -> None:
+        svc = self.server.service
+        if path == "/api/status":
+            self._json(svc.status())
+        elif path == "/api/snapshots":
+            self._json({"snapshots": svc.snapshot_list()})
+        elif path == "/api/books":
+            source = (query.get("source") or [None])[0]
+            self._json(svc.library(source))
+        elif path == "/api/export/status":
+            self._json(svc.export_status())
+        else:
+            self._error(HTTPStatus.NOT_FOUND, "not found")
+
+    def _api_post(self, path, body) -> None:
+        svc = self.server.service
+        if path == "/api/export":
+            use_device = bool(body.get("use_device", True))
+            source = body.get("source")
+            fmt = body.get("format")
+            started = svc.start_export(use_device=use_device, source=source,
+                                       fmt=fmt)
+            if not started:
+                self._error(HTTPStatus.CONFLICT, "a backup is already running")
+                return
+            self._json({"started": True})
+        elif path == "/api/open":
+            which = body.get("dir", "data")
+            if which not in ("data", "backups", "output"):
+                self._error(HTTPStatus.BAD_REQUEST, "unknown folder")
+                return
+            self._json({"ok": svc.open_folder(which)})
+        else:
+            self._error(HTTPStatus.NOT_FOUND, "not found")
+
+    # -- static ----------------------------------------------------------------
+
+    def _serve_static(self, filename, ctype) -> None:
+        try:
+            body = (_ASSETS / filename).read_bytes()
+        except OSError:
+            self._error(HTTPStatus.NOT_FOUND, "not found")
+            return
+        self._send(HTTPStatus.OK, body, ctype)
+
+
+def _load_index(token: str) -> bytes:
+    html = (_ASSETS / "index.html").read_text(encoding="utf-8")
+    return html.replace(_TOKEN_PLACEHOLDER, token).encode("utf-8")
+
+
+def build_server(service: Service, *, host="127.0.0.1", port=0):
+    """Create a configured ThreadingHTTPServer (not yet serving)."""
+    token = secrets.token_urlsafe(32)
+    httpd = ThreadingHTTPServer((host, port), _Handler)
+    httpd.daemon_threads = True
+    actual_port = httpd.server_address[1]
+    httpd.service = service
+    httpd.token = token
+    httpd.allowed_hosts = {f"127.0.0.1:{actual_port}", f"localhost:{actual_port}"}
+    return httpd
+
+
+def main(argv=None) -> None:
+    ap = argparse.ArgumentParser(
+        prog="markwell-gui",
+        description="Open the Markwell app in your web browser.")
+    ap.add_argument("--data-dir", default=str(default_data_dir()),
+                    help="where backups and exports are kept "
+                         "(default: ~/Markwell)")
+    ap.add_argument("--format", choices=["md", "json", "all"], default="all",
+                    help="what to export (default: all)")
+    ap.add_argument("--port", type=int, default=0,
+                    help="port to listen on (default: an automatic free port)")
+    ap.add_argument("--no-browser", action="store_true",
+                    help="don't open the browser automatically")
+    args = ap.parse_args(argv)
+
+    service = Service(args.data_dir, fmt=args.format)
+    httpd = build_server(service, port=args.port)
+    url = "http://127.0.0.1:%d/" % httpd.server_address[1]
+
+    print("\n  Markwell is running.", file=sys.stderr)
+    print("  Open this in your browser if it didn't open automatically:",
+          file=sys.stderr)
+    print("    %s" % url, file=sys.stderr)
+    print("  Your files live in: %s" % service.data_dir, file=sys.stderr)
+    print("  Press Ctrl+C here to stop.\n", file=sys.stderr)
+
+    if not args.no_browser:
+        threading.Timer(0.3, webbrowser.open, args=(url,)).start()
+
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\n  Markwell stopped. Your files are safe.\n", file=sys.stderr)
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="markwell-token" content="__MARKWELL_TOKEN__">
+  <meta name="color-scheme" content="light dark">
+  <title>Markwell</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232E7D6B'/%3E%3Cpath d='M9 8h3l4 7 4-7h3v16h-3V14l-4 7-4-7v10H9z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip-link" href="#view">Skip to content</a>
+
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="28" height="28"><rect width="32" height="32" rx="8" fill="currentColor"/><path d="M9 8h3l4 7 4-7h3v16h-3V14l-4 7-4-7v10H9z" fill="#fff"/></svg>
+        </span>
+        <span class="brand-text">
+          <strong>Markwell</strong>
+          <small>Mark well what you read.</small>
+        </span>
+      </div>
+
+      <nav class="nav" aria-label="Main">
+        <a href="#/backup" data-route="backup" aria-label="Back up">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg>
+          <span>Back up</span>
+        </a>
+        <a href="#/library" data-route="library" aria-label="Library">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h6v16H5zM13 4h6v16h-6zM8 8h0M16 8h0"/></svg>
+          <span>Library</span>
+        </a>
+        <a href="#/history" data-route="history" aria-label="History">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 7v5l3 2M3 12a9 9 0 1 0 2.5-6.2M3 4v3h3"/></svg>
+          <span>History</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-foot">
+        <p class="reassure">
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="shield"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+          <span>Markwell only <em>reads</em> your Kobo. It never changes anything on your device.</span>
+        </p>
+        <p class="version" id="version"></p>
+      </div>
+    </aside>
+
+    <main class="main" id="view" tabindex="-1">
+      <!-- views render here -->
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

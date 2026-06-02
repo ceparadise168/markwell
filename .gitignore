@@ -24,3 +24,9 @@ venv/
 # --- OS ---
 .DS_Store
 Thumbs.db
+
+# --- Playwright MCP scratch (screenshots/snapshots) ---
+.playwright-mcp/
+
+# --- Local agent/editor tooling state ---
+.claude/

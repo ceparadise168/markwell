@@ -73,6 +73,30 @@ output/
 └── highlights.json     machine-readable export (schema "markwell/1")
 ```
 
+## The app (no terminal needed)
+
+Prefer a window to a command line? Markwell ships a small graphical app:
+
+```bash
+markwell-gui          # or:  python3 -m markwell.gui
+```
+
+It opens in your web browser and lets you, in plain language:
+
+- **Back up** — one button snapshots your Kobo and turns your highlights into
+  readable pages, with live progress and a clear result.
+- **Library** — read and search your highlights and notes in a calm, book-like
+  view (one file per book, in reading order, with your notes).
+- **History** — see every saved copy, re-create your files from an older one, and
+  open the folder where everything lives.
+
+It uses the same safe core as the command line, so it **never writes to your
+Kobo**. The app is purely local: it serves only to `127.0.0.1`, makes no network
+connections, and requires a per-launch token on every request (see
+[`SECURITY.md`](SECURITY.md)). Files default to `~/Markwell` (change with
+`--data-dir`); the app always shows you where they are. It needs only the Python
+standard library — no extra dependencies, no build step.
+
 ## How it works
 
 `detect device → snapshot once (read-only) → read snapshot → Markdown + JSON`

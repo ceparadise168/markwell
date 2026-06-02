@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A graphical app (`markwell-gui` / `python -m markwell.gui`).** A local,
+  offline web app for non-technical readers to safely **back up**, **read &
+  search**, and **manage** their Kobo highlights — no terminal, no learning curve.
+  It reuses the same safe core (never writes to the device) and adds zero runtime
+  dependencies (Python standard library + hand-written HTML/CSS/JS). Hardened to
+  stay local: binds `127.0.0.1` only, requires a per-launch token on every
+  request, allow-lists the `Host` header, sends a Content-Security-Policy, and
+  makes no network connections (see `SECURITY.md`).
 - **`--require-device` flag** — fail instead of silently falling back to the
   latest local snapshot when no device is connected.
 - **`--debug` flag** — show full tracebacks on error.

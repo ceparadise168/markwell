@@ -8,9 +8,13 @@ from ..model import Book
 SCHEMA = "markwell/1"
 
 
-def render(books: list[Book], meta: dict) -> dict[str, str]:
-    """Return {"highlights.json": text} following the documented schema."""
-    doc = {
+def document(books: list[Book], meta: dict) -> dict:
+    """Return the schema-`markwell/1` document as a plain dict.
+
+    Separated from `render()` so in-process consumers (e.g. the GUI, which feeds
+    the same shape to the browser) can use the data without re-parsing JSON text.
+    """
+    return {
         "schema": SCHEMA,
         "generated": meta["generated"],
         "source": meta["source"],
@@ -34,4 +38,9 @@ def render(books: list[Book], meta: dict) -> dict[str, str]:
             for b in books
         ],
     }
-    return {"highlights.json": json.dumps(doc, ensure_ascii=False, indent=2) + "\n"}
+
+
+def render(books: list[Book], meta: dict) -> dict[str, str]:
+    """Return {"highlights.json": text} following the documented schema."""
+    text = json.dumps(document(books, meta), ensure_ascii=False, indent=2) + "\n"
+    return {"highlights.json": text}

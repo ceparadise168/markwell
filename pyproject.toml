@@ -29,6 +29,10 @@ dev = ["pytest>=7"]
 
 [project.scripts]
 markwell = "markwell.cli:main"
+markwell-gui = "markwell.gui.server:main"
 
 [tool.setuptools.packages.find]
 include = ["markwell*"]
+
+[tool.setuptools.package-data]
+"markwell.gui" = ["assets/*"]

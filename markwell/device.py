@@ -27,11 +27,12 @@ def _candidate_roots() -> list[pathlib.Path]:
     if sys.platform == "darwin":
         return [pathlib.Path(p) for p in glob.glob("/Volumes/KOBOeReader*")]
     if sys.platform.startswith("linux"):
-        user = getpass.getuser()
-        roots = [
-            pathlib.Path(f"/media/{user}/KOBOeReader"),
-            pathlib.Path(f"/run/media/{user}/KOBOeReader"),
-        ]
+        try:
+            user = getpass.getuser()
+        except Exception:  # no passwd entry / no USER env — don't crash detection
+            user = None
+        roots = [pathlib.Path(f"/media/{user}/KOBOeReader"),
+                 pathlib.Path(f"/run/media/{user}/KOBOeReader")] if user else []
         roots += [pathlib.Path(p) for p in glob.glob("/media/*/KOBOeReader")]
         roots += [pathlib.Path(p) for p in glob.glob("/mnt/*/KOBOeReader")]
         return roots
