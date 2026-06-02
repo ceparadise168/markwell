@@ -109,6 +109,16 @@ a { color: inherit; }
 .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
 .brand-text strong { font-size: 1.18rem; letter-spacing: -.02em; }
 .brand-text small { color: var(--ink-faint); font-size: .76rem; font-style: italic; }
+.quit-app {
+  margin-left: auto; width: 34px; height: 34px; flex: none;
+  display: grid; place-items: center; cursor: pointer;
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  color: var(--ink-faint); background: transparent;
+}
+.quit-app:hover { color: var(--ink); background: var(--surface-2); border-color: var(--line); }
+.quit-app:disabled { opacity: .5; cursor: default; }
+.quit-app svg { width: 19px; height: 19px; fill: none; stroke: currentColor;
+  stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 
 .nav { display: flex; flex-direction: column; gap: 3px; }
 .nav a {

@@ -56,6 +56,31 @@ const ICON = {
   clock: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>',
 };
 
+let heartbeatTimer;
+
+async function sendHeartbeat() {
+  try { await api("/api/heartbeat", { method: "POST" }); }
+  catch (_) { /* server may already be shutting down */ }
+}
+
+async function quitApp() {
+  const btn = document.getElementById("quit-app");
+  if (btn) btn.disabled = true;
+  clearInterval(heartbeatTimer);
+  try {
+    await api("/api/quit", { method: "POST" });
+    toast("Markwell is quitting.");
+    view.innerHTML = `<div class="wrap"><div class="empty">
+      <h2>Markwell has quit</h2>
+      <p>You can close this browser tab.</p>
+    </div></div>`;
+  } catch (_) {
+    if (btn) btn.disabled = false;
+    heartbeatTimer = setInterval(sendHeartbeat, 15000);
+    toast("Could not quit Markwell from here.");
+  }
+}
+
 /* ---------- shared state ---------- */
 const state = {
   status: null,
@@ -593,4 +618,8 @@ function showError() {
 }
 
 /* ---------- start ---------- */
+const quitButton = document.getElementById("quit-app");
+if (quitButton) quitButton.onclick = quitApp;
+sendHeartbeat();
+heartbeatTimer = setInterval(sendHeartbeat, 15000);
 route(false);

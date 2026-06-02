@@ -157,6 +157,23 @@ def _get(port, path, token=None, host=None):
     return resp.status, body
 
 
+def _post(port, path, token=None, body=None, host=None):
+    import json
+    payload = json.dumps(body or {}).encode("utf-8")
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+    conn.putrequest("POST", path, skip_host=True, skip_accept_encoding=True)
+    conn.putheader("Host", host or f"127.0.0.1:{port}")
+    conn.putheader("Content-Type", "application/json")
+    conn.putheader("Content-Length", str(len(payload)))
+    if token is not None:
+        conn.putheader("X-Markwell-Token", token)
+    conn.endheaders(payload)
+    resp = conn.getresponse()
+    text = resp.read().decode("utf-8")
+    conn.close()
+    return resp.status, text
+
+
 def test_index_served_with_token_injected(live):
     httpd, port = live
     status, body = _get(port, "/")
@@ -171,6 +188,43 @@ def test_api_requires_token(live):
     assert _get(port, "/api/status")[0] == 403           # no token
     assert _get(port, "/api/status", token="wrong")[0] == 403
     assert _get(port, "/api/status", token=httpd.token)[0] == 200
+
+
+def test_desktop_lifecycle_post_endpoints_require_token(live):
+    httpd, port = live
+    assert _post(port, "/api/quit")[0] == 403
+    assert _post(port, "/api/heartbeat")[0] == 403
+    assert _post(port, "/api/heartbeat", token="wrong")[0] == 403
+    assert _post(port, "/api/heartbeat", token=httpd.token)[0] == 200
+
+
+def test_heartbeat_updates_activity_timestamp(service):
+    ticks = iter([100.0, 125.0])
+    httpd = build_server(service, port=0, now=lambda: next(ticks))
+    port = httpd.server_address[1]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert httpd.last_heartbeat == 100.0
+        status, _ = _post(port, "/api/heartbeat", token=httpd.token)
+        assert status == 200
+        assert httpd.last_heartbeat == 125.0
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_desktop_idle_shutdown_waits_for_running_export(service):
+    httpd = build_server(service, port=0, desktop=True, idle_timeout=300,
+                         now=lambda: 1000.0)
+    try:
+        httpd.last_heartbeat = 0.0
+        service._set(state="running")
+        assert httpd.should_shutdown_for_idle() is False
+        service._set(state="idle")
+        assert httpd.should_shutdown_for_idle() is True
+    finally:
+        httpd.server_close()
 
 
 def test_api_rejects_foreign_host(live):

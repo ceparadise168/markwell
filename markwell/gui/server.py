@@ -25,6 +25,7 @@ import secrets
 import sqlite3
 import sys
 import threading
+import time
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -42,6 +43,42 @@ _STATIC = {
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
 }
+
+
+class MarkwellHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, server_address, handler_class, *, service: Service,
+                 token: str, desktop: bool = False, idle_timeout: float = 300.0,
+                 now=None):
+        super().__init__(server_address, handler_class)
+        self.service = service
+        self.token = token
+        self.desktop_mode = desktop
+        self.idle_timeout = idle_timeout
+        self._now = now or time.monotonic
+        self.last_heartbeat = self._now()
+        self.shutdown_requested = threading.Event()
+        actual_port = self.server_address[1]
+        self.allowed_hosts = {f"127.0.0.1:{actual_port}",
+                              f"localhost:{actual_port}"}
+
+    def mark_activity(self) -> None:
+        self.last_heartbeat = self._now()
+
+    def export_running(self) -> bool:
+        return self.service.export_status().get("state") == "running"
+
+    def should_shutdown_for_idle(self) -> bool:
+        if not self.desktop_mode:
+            return False
+        if self.export_running():
+            return False
+        return (self._now() - self.last_heartbeat) >= self.idle_timeout
+
+    def request_shutdown(self) -> None:
+        self.shutdown_requested.set()
+        threading.Thread(target=self.shutdown, daemon=True).start()
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -204,7 +241,13 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _api_post(self, path, body) -> None:
         svc = self.server.service
-        if path == "/api/export":
+        if path == "/api/heartbeat":
+            self.server.mark_activity()
+            self._json({"ok": True})
+        elif path == "/api/quit":
+            self._json({"quitting": True})
+            self.server.request_shutdown()
+        elif path == "/api/export":
             use_device = bool(body.get("use_device", True))
             source = body.get("source")
             fmt = body.get("format")
@@ -239,16 +282,26 @@ def _load_index(token: str) -> bytes:
     return html.replace(_TOKEN_PLACEHOLDER, token).encode("utf-8")
 
 
-def build_server(service: Service, *, host="127.0.0.1", port=0):
+def build_server(service: Service, *, host="127.0.0.1", port=0,
+                 desktop: bool = False, idle_timeout: float = 300.0, now=None):
     """Create a configured ThreadingHTTPServer (not yet serving)."""
     token = secrets.token_urlsafe(32)
-    httpd = ThreadingHTTPServer((host, port), _Handler)
-    httpd.daemon_threads = True
-    actual_port = httpd.server_address[1]
-    httpd.service = service
-    httpd.token = token
-    httpd.allowed_hosts = {f"127.0.0.1:{actual_port}", f"localhost:{actual_port}"}
-    return httpd
+    return MarkwellHTTPServer((host, port), _Handler, service=service,
+                              token=token, desktop=desktop,
+                              idle_timeout=idle_timeout, now=now)
+
+
+def _start_idle_monitor(httpd: MarkwellHTTPServer, interval: float = 1.0) -> None:
+    if not httpd.desktop_mode:
+        return
+
+    def monitor() -> None:
+        while not httpd.shutdown_requested.wait(interval):
+            if httpd.should_shutdown_for_idle():
+                httpd.request_shutdown()
+                return
+
+    threading.Thread(target=monitor, daemon=True).start()
 
 
 def main(argv=None) -> None:
@@ -264,10 +317,12 @@ def main(argv=None) -> None:
                     help="port to listen on (default: an automatic free port)")
     ap.add_argument("--no-browser", action="store_true",
                     help="don't open the browser automatically")
+    ap.add_argument("--desktop", action="store_true",
+                    help="run with desktop app lifecycle controls")
     args = ap.parse_args(argv)
 
     service = Service(args.data_dir, fmt=args.format)
-    httpd = build_server(service, port=args.port)
+    httpd = build_server(service, port=args.port, desktop=args.desktop)
     url = "http://127.0.0.1:%d/" % httpd.server_address[1]
 
     print("\n  Markwell is running.", file=sys.stderr)
@@ -275,10 +330,15 @@ def main(argv=None) -> None:
           file=sys.stderr)
     print("    %s" % url, file=sys.stderr)
     print("  Your files live in: %s" % service.data_dir, file=sys.stderr)
-    print("  Press Ctrl+C here to stop.\n", file=sys.stderr)
+    if args.desktop:
+        print("  Use Quit in the app to stop.\n", file=sys.stderr)
+    else:
+        print("  Press Ctrl+C here to stop.\n", file=sys.stderr)
 
     if not args.no_browser:
         threading.Timer(0.3, webbrowser.open, args=(url,)).start()
+
+    _start_idle_monitor(httpd)
 
     try:
         httpd.serve_forever()
