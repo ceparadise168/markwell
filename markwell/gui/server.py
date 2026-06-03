@@ -157,24 +157,30 @@ class _Handler(BaseHTTPRequestHandler):
 
     # -- routing ---------------------------------------------------------------
 
+    def _serve_public(self, path) -> bool:
+        """Serve the cheap, side-effect-free public routes (index, static assets,
+        favicon). Returns True if it handled `path`. Shared by GET and HEAD so the
+        route table lives in one place and HEAD never runs a device probe or
+        snapshot read; `_send` already drops the body for HEAD requests."""
+        if path == "/":
+            self._send(HTTPStatus.OK, _load_index(self.server.token),
+                       "text/html; charset=utf-8")
+        elif path in _STATIC:
+            self._serve_static(*_STATIC[path])
+        elif path == "/favicon.ico":
+            self._send(HTTPStatus.NO_CONTENT, b"", "image/x-icon")
+        else:
+            return False
+        return True
+
     def do_GET(self) -> None:  # noqa: N802
         if not self._host_ok():
             self._error(HTTPStatus.FORBIDDEN, "bad host")
             return
         route = urlparse(self.path)
         path = route.path
-
-        if path == "/":
-            self._send(HTTPStatus.OK, _load_index(self.server.token),
-                       "text/html; charset=utf-8")
+        if self._serve_public(path):
             return
-        if path in _STATIC:
-            self._serve_static(*_STATIC[path])
-            return
-        if path == "/favicon.ico":
-            self._send(HTTPStatus.NO_CONTENT, b"", "image/x-icon")
-            return
-
         if path.startswith("/api/"):
             if not self._token_ok():
                 self._error(HTTPStatus.FORBIDDEN, "bad token")
@@ -184,20 +190,10 @@ class _Handler(BaseHTTPRequestHandler):
         self._error(HTTPStatus.NOT_FOUND, "not found")
 
     def do_HEAD(self) -> None:  # noqa: N802
-        # Honor only cheap, side-effect-free routes; never run a device probe or
-        # snapshot read for a HEAD.
         if not self._host_ok():
             self._error(HTTPStatus.FORBIDDEN, "bad host")
             return
-        path = urlparse(self.path).path
-        if path == "/":
-            self._send(HTTPStatus.OK, _load_index(self.server.token),
-                       "text/html; charset=utf-8")
-        elif path in _STATIC:
-            self._serve_static(*_STATIC[path])
-        elif path == "/favicon.ico":
-            self._send(HTTPStatus.NO_CONTENT, b"", "image/x-icon")
-        else:
+        if not self._serve_public(urlparse(self.path).path):
             self._error(HTTPStatus.METHOD_NOT_ALLOWED, "use GET")
 
     def do_POST(self) -> None:  # noqa: N802

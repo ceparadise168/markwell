@@ -223,6 +223,24 @@ function currentFmt() {
   return state.fmt || (state.status && state.status.format) || "all";
 }
 
+/* Which library source a view should load: an explicit 'sample' stays sample;
+   otherwise the current source if one exists, else the newest ('latest'). Shared
+   by renderLibrary and renderBook so the two can never resolve to different
+   sources (both call loadStatus() first, so state.status is populated). */
+function resolveSource() {
+  return state.source === "sample" ? "sample"
+    : (state.status.has_library ? state.source : "latest");
+}
+
+/* Switch the active library source: drop the cached doc (forces loadLibrary to
+   refetch AND rebuild state.flat) and clear any search. Every "open this source"
+   control goes through here so the reset stays in one place. */
+function switchSource(src) {
+  state.source = src;
+  state.lib = null;
+  state.q = "";
+}
+
 function announceSearch(text) {
   clearTimeout(srSearchTimer);
   srSearchTimer = setTimeout(() => {
@@ -260,14 +278,18 @@ function buildFlatIndex(books) {
   const flat = [];
   (books || []).forEach((b) => {
     (b.highlights || []).forEach((h, hlIdx) => {
+      const text = h.text || "", note = h.note || "";
       flat.push({
-        text: h.text || "",
-        note: h.note || "",
+        text,
+        note,
         date: h.date || "",
         bookIdx: b._idx,
         hlIdx,
         bookTitle: b.title || "",
         chapterIndex: h.chapter_index,
+        // lowercased text+note haystack, precomputed once so search doesn't
+        // re-lowercase the whole corpus on every keystroke (see highlightMatches)
+        hay: (text + " " + note).toLowerCase(),
       });
     });
   });
@@ -350,7 +372,7 @@ async function renderBackup() {
   const s = state.status;
   const job = await api("/api/export/status");
 
-  const lastLine = (s.has_library && s.latest_snapshot)
+  const lastLine = s.has_library
     ? `<p class="hero-last">Your latest saved copy is ready to read in your Library.</p>`
     : "";
 
@@ -598,10 +620,7 @@ function searchTerms(q) {
   return q.toLowerCase().split(/\s+/).filter(Boolean);
 }
 function highlightMatches(flat, terms) {
-  return (flat || []).filter((h) => {
-    const hay = (h.text + " " + h.note).toLowerCase();
-    return terms.every((t) => hay.includes(t));
-  });
+  return (flat || []).filter((h) => terms.every((t) => h.hay.includes(t)));
 }
 /* Find term matches on the RAW (unescaped) text, then emit esc(segment) around
    <mark>esc(match)</mark>. Matching on the raw string avoids corrupting HTML
@@ -675,9 +694,7 @@ function renderSearchResults(q) {
 /* ---------- view: Library ---------- */
 async function renderLibrary() {
   await loadStatus();
-  const source = state.source === "sample" ? "sample"
-    : (state.status.has_library ? state.source : "latest");
-  const lib = await loadLibrary(source);
+  const lib = await loadLibrary(resolveSource());
 
   if (lib.source_kind === "empty") {
     view.innerHTML = `<div class="wrap">${emptyLibrary()}</div>`;
@@ -788,9 +805,7 @@ function wireCards() {
    + FAB on, then honour any pending jump (scroll + flash). */
 async function renderBook(arg) {
   await loadStatus();
-  const source = state.source === "sample" ? "sample"
-    : (state.status.has_library ? state.source : "latest");
-  const lib = await loadLibrary(source);
+  const lib = await loadLibrary(resolveSource());
   const bookIdx = Number(arg);
   const book = (lib.books || [])[bookIdx];
   if (!book) { location.hash = "#/library"; return; }
@@ -993,7 +1008,7 @@ function wireSnapActions() {
   document.querySelectorAll(".snap").forEach((li) => {
     const name = li.dataset.name;
     li.querySelector('[data-act="view"]').onclick = () => {
-      state.source = name; state.lib = null; state.q = "";
+      switchSource(name);
       location.hash = "#/library";
     };
     li.querySelector('[data-act="reexport"]').onclick = async (e) => {
@@ -1068,7 +1083,7 @@ function emptyLibrary() {
 function wireEmptyLibrary() {
   const b = document.getElementById("try-sample");
   if (b) b.onclick = () => {
-    state.source = "sample"; state.lib = null; state.q = "";
+    switchSource("sample");
     renderLibrary();
   };
 }
@@ -1086,7 +1101,7 @@ function sampleBanner() {
 function wireSampleBanner() {
   const b = document.getElementById("exit-sample");
   if (b) b.onclick = () => {
-    state.source = "latest"; state.lib = null; state.q = "";
+    switchSource("latest");
     renderLibrary();
   };
 }

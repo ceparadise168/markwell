@@ -8,7 +8,7 @@ import sqlite3
 import sys
 
 from . import __version__, device, reader
-from .export import _MANIFEST, build_files, write_outputs  # noqa: F401 (re-export)
+from .export import _MANIFEST, build_files, build_meta, write_outputs  # noqa: F401 (re-export)
 from .reader import UnsupportedSchemaError
 
 
@@ -92,10 +92,7 @@ def _run(args):
         print("No highlights or notes found in the database.", file=sys.stderr)
         sys.exit(3)
 
-    meta = {"generated": datetime.date.today().isoformat(),
-            "source": pathlib.Path(src).name,
-            "source_freshness": freshness,
-            "version": __version__}
+    meta = build_meta(pathlib.Path(src).name, freshness)
     files = build_files(books, meta, args.format)
     n = write_outputs(files, args.out)
     total = sum(len(b.highlights) for b in books)

@@ -8,14 +8,32 @@ produce.
 """
 from __future__ import annotations
 
+import datetime
 import json
 import pathlib
 
+from . import __version__
 from .model import Book
 from .render import json as json_render
 from .render import markdown as md_render
 
 _MANIFEST = ".markwell-manifest.json"
+
+
+def build_meta(source: str, freshness: str) -> dict:
+    """Assemble the render `meta` block both front-ends pass to the renderers.
+
+    The renderers read exactly these keys (generated/source/source_freshness/
+    version); building them in one place keeps the CLI and GUI from drifting on
+    the shape. `source` is the snapshot/sample name; `freshness` is one of
+    "device" | "cached_snapshot" | "sample".
+    """
+    return {
+        "generated": datetime.date.today().isoformat(),
+        "source": source,
+        "source_freshness": freshness,
+        "version": __version__,
+    }
 
 
 def build_files(books: list[Book], meta: dict, fmt: str) -> dict[str, str]:

@@ -18,7 +18,7 @@ import threading
 
 from . import sample as sample_lib
 from .. import __version__, device, reader
-from ..export import build_files, write_outputs
+from ..export import build_files, build_meta, write_outputs
 from ..reader import UnsupportedSchemaError
 from ..render import json as json_render
 
@@ -34,10 +34,6 @@ def default_data_dir() -> pathlib.Path:
     home-folder location the UI always shows.
     """
     return pathlib.Path.home() / "Markwell"
-
-
-def _today() -> str:
-    return datetime.date.today().isoformat()
 
 
 def _parse_stamp(name: str):
@@ -199,9 +195,8 @@ class Service:
         snapshot; a snapshot filename -> that copy; nothing available -> empty.
         """
         if source == "sample":
-            doc = json_render.document(sample_lib.library(), {
-                "generated": _today(), "source": "sample",
-                "source_freshness": "sample", "version": __version__})
+            doc = json_render.document(sample_lib.library(),
+                                       build_meta("sample", "sample"))
             doc["source_kind"] = "sample"
             doc["source_name"] = "Sample library"
             return doc
@@ -211,9 +206,8 @@ class Service:
             return {"schema": "markwell/1", "books": [], "source_kind": "empty",
                     "source_name": None}
         books = reader.read_books(path)
-        doc = json_render.document(books, {
-            "generated": _today(), "source": path.name,
-            "source_freshness": "cached_snapshot", "version": __version__})
+        doc = json_render.document(books,
+                                   build_meta(path.name, "cached_snapshot"))
         doc["source_kind"] = "snapshot"
         doc["source_name"] = path.name
         return doc
@@ -278,8 +272,7 @@ class Service:
                 return
 
             self._set(phase="rendering", message="Preparing your files…")
-            meta = {"generated": _today(), "source": src.name,
-                    "source_freshness": freshness, "version": __version__}
+            meta = build_meta(src.name, freshness)
             files = build_files(books, meta, fmt)
             write_outputs(files, self.out_dir)
 
