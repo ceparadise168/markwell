@@ -207,7 +207,6 @@ a { color: inherit; }
 }
 .reassure .shield { width: 30px; height: 30px; flex: none; fill: none;
   stroke: var(--accent); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.reassure em { color: var(--ink); font-style: normal; font-weight: 650; }
 .version { font-size: .72rem; color: var(--ink-faint); margin: 0; }
 
 .main {
@@ -608,6 +607,19 @@ html.js .reveal:not(.in) { opacity: 0; transform: translateY(14px); }
 html.is-dark .ico-sun { display: inline-flex; }
 html:not(.is-dark) .ico-moon { display: inline-flex; }
 
+/* ---- language switcher (sidebar foot, beside the day/night toggle). A native
+   <select> dressed as the same quiet control as .theme-toggle; i18n.js fills
+   its options with native locale names. Native dropdown chrome is kept on
+   purpose so it still reads as a menu. ---- */
+.locale-select {
+  display: block; width: 100%;
+  padding: 8px 10px; margin-bottom: 10px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
+  font: inherit; font-size: .82rem; font-weight: 550; cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.locale-select:hover { background: var(--surface-2); color: var(--ink); }
+
 /* ---- toast ---- */
 .toast {
   position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
@@ -625,12 +637,14 @@ html:not(.is-dark) .ico-moon { display: inline-flex; }
   .nav { flex-direction: row; flex: 1; justify-content: flex-end; }
   .nav a { flex-direction: column; gap: 3px; padding: 7px 12px; }
   .nav a span { font-size: .66rem; }
-  /* keep the foot laid out so the day/night toggle stays reachable on mobile,
-     but drop the reassurance prose + version (they belong to the wide rail) */
-  .sidebar-foot { display: block; margin-top: 0; padding: 0; }
+  /* keep the foot laid out so the day/night toggle and language switcher stay
+     reachable on mobile, but drop the reassurance prose + version (they belong
+     to the wide rail) */
+  .sidebar-foot { display: flex; align-items: center; gap: 8px; margin-top: 0; padding: 0; }
   .sidebar-foot .reassure, .sidebar-foot .version { display: none; }
   .theme-toggle { width: auto; margin: 0; padding: 8px; }
   .theme-toggle .label { display: none; }   /* icon-only; aria-label stays authoritative */
+  .locale-select { width: auto; margin: 0; padding: 7px 8px; }
   .main { padding: 22px 18px 60px; }
 }
 

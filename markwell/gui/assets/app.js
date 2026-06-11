@@ -223,19 +223,6 @@ function currentFmt() {
   return state.fmt || (state.status && state.status.format) || "all";
 }
 
-/* Which of Markwell's four export languages matches the reader, sent with every
-   export so the files' labels match the screen. Temporary inline derivation —
-   Task 4 centralizes locale state and replaces this helper. */
-function exportLang() {
-  let raw = null;
-  try { raw = localStorage.getItem("markwell-locale"); } catch (_) { /* private mode */ }
-  raw = raw || navigator.language || "en";
-  if (/^zh/i.test(raw)) return "zh-TW";
-  if (/^ja/i.test(raw)) return "ja";
-  if (/^ko/i.test(raw)) return "ko";
-  return "en";
-}
-
 /* Which library source a view should load: an explicit 'sample' stays sample;
    otherwise the current source if one exists, else the newest ('latest'). Shared
    by renderLibrary and renderBook so the two can never resolve to different
@@ -417,7 +404,7 @@ async function startBackup() {
   btn.disabled = true;
   srPhase = "";
   try {
-    await api("/api/export", { method: "POST", body: { use_device: true, format: currentFmt(), lang: exportLang() } });
+    await api("/api/export", { method: "POST", body: { use_device: true, format: currentFmt(), lang: currentLocale() } });
     pollExport();
   } catch (err) {
     btn.disabled = false;
@@ -1066,7 +1053,7 @@ function wireSnapActions() {
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span><span>Working…</span>';
       try {
-        await api("/api/export", { method: "POST", body: { use_device: false, source: name, format: currentFmt(), lang: exportLang() } });
+        await api("/api/export", { method: "POST", body: { use_device: false, source: name, format: currentFmt(), lang: currentLocale() } });
         const job = await waitForExport();
         if (job.state === "done") {
           btn.innerHTML = ICON.check + "<span>Re-created ✓</span>";

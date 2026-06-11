@@ -42,6 +42,7 @@ _CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self' "
 _STATIC = {
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+    "/i18n.js": ("i18n.js", "application/javascript; charset=utf-8"),
 }
 
 
