@@ -3,8 +3,9 @@
 Shown on first run / empty states so someone can see what reading their
 highlights will feel like *before* plugging in a Kobo, and so screenshots and
 tests never touch anyone's personal data. Everything here is public domain
-(Marcus Aurelius, Thoreau, Austen, 老子) and includes CJK text on purpose, to
-prove the reading view renders Chinese as beautifully as English.
+(Marcus Aurelius, Thoreau, Austen, 老子, 夏目漱石, 김소월) and includes CJK
+text on purpose, to prove the reading view renders Chinese, Japanese, and
+Korean as beautifully as English.
 """
 from __future__ import annotations
 
@@ -98,11 +99,45 @@ def library() -> list[Book]:
                     note="自勝者強——最難的是勝過自己。",
                     date="2025-03-18", chapter_index=33),
                 Highlight(
-                    "天下莫柔弱於水，而攻堅強者莫之能勝，以其無以易之。",
-                    date="2025-04-07", chapter_index=78),
-                Highlight(
                     "合抱之木，生於毫末；九層之臺，起於累土；千里之行，始於足下。",
-                    date="2025-05-21", chapter_index=64),
+                    date="2025-04-07", chapter_index=64),
+                Highlight(
+                    "天下莫柔弱於水，而攻堅強者莫之能勝，以其無以易之。",
+                    date="2025-05-21", chapter_index=78),
+            ],
+        ),
+        Book(
+            title="草枕",
+            author="夏目漱石",
+            volume_id="sample:kusamakura",
+            highlights=[
+                Highlight(
+                    "山路を登りながら、こう考えた。",
+                    date="2025-06-05", chapter_index=1),
+                Highlight(
+                    "智に働けば角が立つ。情に棹させば流される。意地を通せば窮屈だ。",
+                    note="何度読んでも身につまされる。",
+                    date="2025-06-18", chapter_index=1),
+                Highlight(
+                    "とかくに人の世は住みにくい。",
+                    date="2025-07-02", chapter_index=1),
+            ],
+        ),
+        Book(
+            title="진달래꽃",
+            author="김소월",
+            volume_id="sample:jindallaekkot",
+            highlights=[
+                Highlight(
+                    "나 보기가 역겨워 가실 때에는 말없이 고이 보내 드리우리다",
+                    date="2025-08-03", chapter_index=1),
+                Highlight(
+                    "가시는 걸음 걸음 놓인 그 꽃을 사뿐히 즈려밟고 가시옵소서",
+                    date="2025-08-06", chapter_index=1),
+                Highlight(
+                    "나 보기가 역겨워 가실 때에는 죽어도 아니 눈물 흘리우리다",
+                    note="교과서에서 배울 때는 몰랐던 슬픔이 이제야 보인다.",
+                    date="2025-08-10", chapter_index=1),
             ],
         ),
     ]

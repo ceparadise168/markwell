@@ -63,6 +63,31 @@ def test_sample_library_shape_and_cjk(service):
     assert any(h["note"] for b in doc["books"] for h in b["highlights"])
 
 
+def test_sample_library_ja_ko_books_and_chapter_order():
+    books = sample.library()
+    assert len(books) == 6  # en ×3 + zh + ja + ko — every target script
+    by_author = {b.author: b for b in books}
+
+    kusamakura = by_author["夏目漱石"]
+    assert kusamakura.title == "草枕"
+    texts = [h.text for h in kusamakura.highlights]
+    assert "山路を登りながら、こう考えた。" in texts
+    assert ("智に働けば角が立つ。情に棹させば流される。"
+            "意地を通せば窮屈だ。") in texts
+    assert "とかくに人の世は住みにくい。" in texts
+    assert all(h.chapter_index == 1 for h in kusamakura.highlights)
+    assert any(h.note for h in kusamakura.highlights)
+
+    azaleas = by_author["김소월"]
+    assert azaleas.title == "진달래꽃"
+    assert len(azaleas.highlights) == 3
+    assert all(h.chapter_index == 1 for h in azaleas.highlights)
+    assert any(h.note for h in azaleas.highlights)
+
+    chapters = [h.chapter_index for h in by_author["老子"].highlights]
+    assert chapters == sorted(chapters)  # reading order, not shuffled
+
+
 def test_snapshot_list_newest_first(service, kobo_db):
     _place_snapshot(service, kobo_db, "20260101-090000")
     _place_snapshot(service, kobo_db, "20260601-120000")
