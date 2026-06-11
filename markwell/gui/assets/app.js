@@ -223,6 +223,19 @@ function currentFmt() {
   return state.fmt || (state.status && state.status.format) || "all";
 }
 
+/* Which of Markwell's four export languages matches the reader, sent with every
+   export so the files' labels match the screen. Temporary inline derivation —
+   Task 4 centralizes locale state and replaces this helper. */
+function exportLang() {
+  let raw = null;
+  try { raw = localStorage.getItem("markwell-locale"); } catch (_) { /* private mode */ }
+  raw = raw || navigator.language || "en";
+  if (/^zh/i.test(raw)) return "zh-TW";
+  if (/^ja/i.test(raw)) return "ja";
+  if (/^ko/i.test(raw)) return "ko";
+  return "en";
+}
+
 /* Which library source a view should load: an explicit 'sample' stays sample;
    otherwise the current source if one exists, else the newest ('latest'). Shared
    by renderLibrary and renderBook so the two can never resolve to different
@@ -404,7 +417,7 @@ async function startBackup() {
   btn.disabled = true;
   srPhase = "";
   try {
-    await api("/api/export", { method: "POST", body: { use_device: true, format: currentFmt() } });
+    await api("/api/export", { method: "POST", body: { use_device: true, format: currentFmt(), lang: exportLang() } });
     pollExport();
   } catch (err) {
     btn.disabled = false;
@@ -943,7 +956,32 @@ function flashHighlight(node) {
     { duration: 1500, easing: "ease-out" });
 }
 
-/* ---------- view: History ---------- */
+/* ---------- view: History ----------
+   The backend ships data for each saved copy (an ISO `stamp`, a byte size);
+   the browser owns all presentation, via Intl in the reader's own locale. */
+function fmtStamp(stampIso) {
+  const d = new Date(stampIso);
+  if (isNaN(d)) return "";
+  return new Intl.DateTimeFormat(undefined,
+    { dateStyle: "medium", timeStyle: "short" }).format(d);
+}
+
+/* Relative age ("2 days ago", "昨天") in the largest sensible unit; anything
+   under 90s reads as "now". numeric:"auto" lets locales say yesterday/昨天. */
+function relAge(stampIso) {
+  const then = new Date(stampIso);
+  if (isNaN(then) || typeof Intl.RelativeTimeFormat !== "function") return "";
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const secs = (then - Date.now()) / 1000;   // negative = in the past
+  const mag = Math.abs(secs);
+  if (mag < 90) return rtf.format(0, "second");                          // "now"
+  if (mag < 3600) return rtf.format(Math.round(secs / 60), "minute");
+  if (mag < 86400) return rtf.format(Math.round(secs / 3600), "hour");
+  if (mag < 2592000) return rtf.format(Math.round(secs / 86400), "day");
+  if (mag < 31536000) return rtf.format(Math.round(secs / 2592000), "month");
+  return rtf.format(Math.round(secs / 31536000), "year");
+}
+
 async function renderHistory() {
   await loadStatus();
   const s = state.status;
@@ -991,11 +1029,14 @@ async function renderHistory() {
 }
 
 function snapRow(sn) {
+  const date = (sn.stamp && fmtStamp(sn.stamp)) || sn.name;  // no stamp -> the filename
+  const age = sn.stamp ? relAge(sn.stamp) : "";
+  const size = Math.round((sn.size_bytes || 0) / 1024).toLocaleString() + " KB";
   return `<li class="snap ${sn.is_latest ? "latest" : ""}" data-name="${esc(sn.name)}">
     <span class="snap-dot">${ICON.clock}</span>
     <div class="snap-main">
-      <div class="snap-date">${esc(sn.date)} ${sn.is_latest ? '<span class="pill">Newest</span>' : ""}</div>
-      <div class="snap-sub">${esc(sn.age)} · ${sn.size_kb.toLocaleString()} KB</div>
+      <div class="snap-date">${esc(date)} ${sn.is_latest ? '<span class="pill">Newest</span>' : ""}</div>
+      <div class="snap-sub">${age ? esc(age) + " · " : ""}${esc(size)}</div>
     </div>
     <div class="snap-acts">
       <button class="btn" data-act="view">${ICON.book}<span>Read</span></button>
@@ -1017,7 +1058,7 @@ function wireSnapActions() {
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span><span>Working…</span>';
       try {
-        await api("/api/export", { method: "POST", body: { use_device: false, source: name, format: currentFmt() } });
+        await api("/api/export", { method: "POST", body: { use_device: false, source: name, format: currentFmt(), lang: exportLang() } });
         const job = await waitForExport();
         if (job.state === "done") {
           btn.innerHTML = ICON.check + "<span>Re-created ✓</span>";

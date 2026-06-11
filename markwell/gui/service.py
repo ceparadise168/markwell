@@ -21,6 +21,7 @@ from .. import __version__, device, reader
 from ..export import build_files, build_meta, write_outputs
 from ..reader import UnsupportedSchemaError
 from ..render import json as json_render
+from ..render import labels
 
 _SNAP_GLOB = "KoboReader-*.sqlite"
 _STAMP_FMT = "%Y%m%d-%H%M%S"
@@ -46,33 +47,13 @@ def _parse_stamp(name: str):
         return None
 
 
-def _fmt_when(when: datetime.datetime) -> str:
-    """A friendly local timestamp, built without platform-specific strftime
-    codes (%-d / %-I are glibc/BSD-only and crash on Windows)."""
-    hour12 = ((when.hour - 1) % 12) + 1
-    return f"{when:%b} {when.day}, {when.year} · {hour12}:{when.minute:02d} {when:%p}"
+def _coerce_lang(lang) -> str:
+    """Clamp a requested export-label language to a locale we ship.
 
-
-def _human_age(when: datetime.datetime, now: datetime.datetime) -> str:
-    """A friendly relative age: 'just now', 'today', 'yesterday', 'N days ago'."""
-    if when is None:
-        return ""
-    delta = now - when
-    secs = delta.total_seconds()
-    if secs < 90:
-        return "just now"
-    if secs < 3600:
-        return f"{int(secs // 60)} minutes ago"
-    days = (now.date() - when.date()).days
-    if days <= 0:
-        return "today"
-    if days == 1:
-        return "yesterday"
-    if days < 30:
-        return f"{days} days ago"
-    if days < 365:
-        return f"{days // 30} months ago"
-    return f"{days // 365} years ago"
+    The value arrives from the browser, so it is untrusted input: anything that
+    isn't a known locale — wrong code, wrong type, missing — silently means
+    English, so a stale or hand-edited page can never wedge an export."""
+    return lang if isinstance(lang, str) and lang in labels.LABELS else "en"
 
 
 def _reveal(path: pathlib.Path) -> bool:
@@ -153,10 +134,15 @@ class Service:
         }
 
     def snapshot_list(self) -> list[dict]:
-        """Saved copies, newest first, described in plain language."""
+        """Saved copies, newest first, as data for the browser to present.
+
+        `stamp` is the snapshot's ISO 8601 local timestamp, or None when the
+        filename doesn't carry one (e.g. a hand-renamed copy). Dates, ages and
+        sizes are formatted by the frontend in the reader's own locale — no
+        presentation text is built here.
+        """
         snaps = self._snapshots()
         latest = snaps[-1] if snaps else None
-        now = datetime.datetime.now()
         rows = []
         for p in reversed(snaps):
             when = _parse_stamp(p.name)
@@ -166,9 +152,8 @@ class Service:
                 size = 0
             rows.append({
                 "name": p.name,
-                "date": _fmt_when(when) if when else p.name,
-                "age": _human_age(when, now),
-                "size_kb": round(size / 1024),
+                "stamp": when.isoformat() if when else None,
+                "size_bytes": size,
                 "is_latest": p == latest,
             })
         return rows
@@ -214,8 +199,13 @@ class Service:
 
     # --- commands ------------------------------------------------------------
 
-    def start_export(self, use_device: bool = True, source=None, fmt=None) -> bool:
-        """Begin a backup in the background. Returns False if one is running."""
+    def start_export(self, use_device: bool = True, source=None, fmt=None,
+                     lang="en") -> bool:
+        """Begin a backup in the background. Returns False if one is running.
+
+        `lang` picks the exported files' label language (the browser sends the
+        reader's UI language so files match what they see on screen); unknown
+        or missing values silently mean English."""
         with self._lock:
             if self._job.state == "running":
                 return False
@@ -226,7 +216,7 @@ class Service:
                                  else "Reading your highlights…")
         thread = threading.Thread(
             target=self._run_export,
-            args=(use_device, source, fmt or self.fmt),
+            args=(use_device, source, fmt or self.fmt, _coerce_lang(lang)),
             daemon=True)
         thread.start()
         return True
@@ -240,7 +230,7 @@ class Service:
             for key, value in fields.items():
                 setattr(self._job, key, value)
 
-    def _run_export(self, use_device: bool, source, fmt: str) -> None:
+    def _run_export(self, use_device: bool, source, fmt: str, lang: str) -> None:
         try:
             if use_device:
                 self._set(phase="detecting", message="Looking for your Kobo…")
@@ -272,7 +262,7 @@ class Service:
                 return
 
             self._set(phase="rendering", message="Preparing your files…")
-            meta = build_meta(src.name, freshness)
+            meta = build_meta(src.name, freshness, lang=lang)
             files = build_files(books, meta, fmt)
             write_outputs(files, self.out_dir)
 

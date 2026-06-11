@@ -1,6 +1,5 @@
 """GUI service use-cases and the HTTP server's security boundary."""
 import http.client
-import re
 import shutil
 import socket
 import threading
@@ -11,7 +10,7 @@ import pytest
 from conftest import make_kobo_db
 from markwell.gui import sample
 from markwell.gui.server import build_server
-from markwell.gui.service import Service, _human_age, _parse_stamp
+from markwell.gui.service import Service, _coerce_lang, _parse_stamp
 import datetime
 
 
@@ -96,7 +95,24 @@ def test_snapshot_list_newest_first(service, kobo_db):
     assert rows[0]["name"].endswith("20260601-120000.sqlite")
     assert rows[0]["is_latest"] is True
     assert rows[1]["is_latest"] is False
-    assert rows[0]["size_kb"] >= 0
+    assert rows[0]["size_bytes"] > 0
+
+
+def test_snapshot_list_emits_data_not_prose(service, kobo_db):
+    # the backend ships a machine timestamp; the browser owns date formatting
+    _place_snapshot(service, kobo_db, "20260601-101010")
+    row = service.snapshot_list()[0]
+    assert set(row) == {"name", "stamp", "size_bytes", "is_latest"}
+    when = datetime.datetime.fromisoformat(row["stamp"])
+    assert when == datetime.datetime(2026, 6, 1, 10, 10, 10)
+
+
+def test_snapshot_without_stamp_has_none_stamp(service, kobo_db):
+    # a hand-renamed copy still lists, with stamp=None for the browser to handle
+    _place_snapshot(service, kobo_db, "handmade-copy")
+    row = service.snapshot_list()[0]
+    assert row["name"] == "KoboReader-handmade-copy.sqlite"
+    assert row["stamp"] is None
 
 
 # ---- service: commands ------------------------------------------------------
@@ -113,6 +129,31 @@ def test_export_from_snapshot_then_view(service, kobo_db):
     doc = service.library("latest")
     assert doc["source_kind"] == "snapshot"
     assert doc["books"]
+
+
+def test_export_lang_localizes_output_files(service, kobo_db):
+    # the exported FILES follow the reader's language even though the backend
+    # itself never formats presentation text
+    name = _place_snapshot(service, kobo_db, "20260601-120000").name
+    assert service.start_export(use_device=False, source=name,
+                                lang="zh-TW") is True
+    job = _wait_export(service)
+    assert job["state"] == "done", job
+    index = (service.out_dir / "index.md").read_text(encoding="utf-8")
+    assert "# Kobo 書摘" in index
+    book = (service.out_dir / "Book_One.md").read_text(encoding="utf-8")
+    assert "**筆記：** My own note" in book
+
+
+def test_export_unknown_lang_coerces_to_english(service, kobo_db):
+    # browser input is untrusted: an unknown code silently means English
+    name = _place_snapshot(service, kobo_db, "20260601-120000").name
+    assert service.start_export(use_device=False, source=name,
+                                lang="xx") is True
+    job = _wait_export(service)
+    assert job["state"] == "done", job
+    index = (service.out_dir / "index.md").read_text(encoding="utf-8")
+    assert "# Kobo Highlights" in index
 
 
 def test_export_no_device_reports_friendly_error(service, monkeypatch):
@@ -149,9 +190,9 @@ def test_second_export_blocked_while_running(service, kobo_db, monkeypatch):
 def test_helpers():
     assert _parse_stamp("KoboReader-20260601-101010.sqlite") is not None
     assert _parse_stamp("not-a-snapshot.sqlite") is None
-    now = datetime.datetime(2026, 6, 2, 12, 0, 0)
-    assert _human_age(now, now) == "just now"
-    assert _human_age(now - datetime.timedelta(days=1), now) == "yesterday"
+    assert _coerce_lang("zh-TW") == "zh-TW"
+    assert _coerce_lang(None) == "en"
+    assert _coerce_lang(["zh-TW"]) == "en"  # unhashable junk coerces, never errors
 
 
 # ---- server: security boundary ----------------------------------------------
@@ -281,13 +322,6 @@ def test_head_on_api_is_not_allowed(live):
     conn.close()
 
 
-def test_snapshot_date_is_portable(service, kobo_db):
-    # guards against glibc/BSD-only strftime codes (%-d/%-I) crashing on Windows
-    _place_snapshot(service, kobo_db, "20260601-101010")
-    date = service.snapshot_list()[0]["date"]
-    assert re.match(r"^[A-Z][a-z]{2} 1, 2026 · 10:10 [AP]M$", date), date
-
-
 def _empty_sqlite(path):
     import sqlite3 as _s
     _s.connect(str(path)).close()
@@ -327,3 +361,29 @@ def test_api_books_corrupt_snapshot_returns_friendly_json(live, service):
     assert status == 422
     import json
     assert "error" in json.loads(body)
+
+
+def _post_export_and_wait(live, service, kobo_db, lang):
+    """Start a snapshot export over HTTP with `lang`; return (status, index.md)."""
+    name = _place_snapshot(service, kobo_db, "20260601-120000").name
+    httpd, port = live
+    status, _ = _post(port, "/api/export", token=httpd.token,
+                      body={"use_device": False, "source": name, "lang": lang})
+    if status != 200:
+        return status, ""
+    job = _wait_export(service)
+    assert job["state"] == "done", job
+    return status, (service.out_dir / "index.md").read_text(encoding="utf-8")
+
+
+def test_api_export_lang_localizes_output(live, service, kobo_db):
+    status, index = _post_export_and_wait(live, service, kobo_db, "zh-TW")
+    assert status == 200
+    assert "# Kobo 書摘" in index
+
+
+def test_api_export_unknown_lang_behaves_as_english(live, service, kobo_db):
+    # silent coercion at the boundary: never a 4xx for a lang we don't ship
+    status, index = _post_export_and_wait(live, service, kobo_db, "xx")
+    assert status == 200
+    assert "# Kobo Highlights" in index

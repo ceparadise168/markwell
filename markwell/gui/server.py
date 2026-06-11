@@ -248,7 +248,7 @@ class _Handler(BaseHTTPRequestHandler):
             source = body.get("source")
             fmt = body.get("format")
             started = svc.start_export(use_device=use_device, source=source,
-                                       fmt=fmt)
+                                       fmt=fmt, lang=body.get("lang"))
             if not started:
                 self._error(HTTPStatus.CONFLICT, "a backup is already running")
                 return
