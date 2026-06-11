@@ -56,6 +56,20 @@ def _coerce_lang(lang) -> str:
     return lang if isinstance(lang, str) and lang in labels.LABELS else "en"
 
 
+def _coerce_fmt(fmt, default: str) -> str:
+    """Clamp a requested export format to one we ship, like `_coerce_lang`.
+
+    Untrusted browser input with teeth: an unknown format would reach
+    `build_files`, render zero files, and `write_outputs` would then prune
+    every previously exported file as stale. Anything that isn't a known
+    format string — wrong value, wrong type, missing — means the service's
+    configured default. Interim clamp: Task 9's format registry
+    (`parse_formats`) replaces this."""
+    if isinstance(fmt, str) and fmt in ("md", "json", "all"):
+        return fmt
+    return default
+
+
 def _reveal(path: pathlib.Path) -> bool:
     """Open a folder in the OS file manager; return whether it launched.
 
@@ -205,7 +219,8 @@ class Service:
 
         `lang` picks the exported files' label language (the browser sends the
         reader's UI language so files match what they see on screen); unknown
-        or missing values silently mean English."""
+        or missing values silently mean English. `fmt` is clamped the same
+        way: anything but a format we ship means the configured default."""
         with self._lock:
             if self._job.state == "running":
                 return False
@@ -216,7 +231,8 @@ class Service:
                                  else "Reading your highlights…")
         thread = threading.Thread(
             target=self._run_export,
-            args=(use_device, source, fmt or self.fmt, _coerce_lang(lang)),
+            args=(use_device, source, _coerce_fmt(fmt, self.fmt),
+                  _coerce_lang(lang)),
             daemon=True)
         thread.start()
         return True

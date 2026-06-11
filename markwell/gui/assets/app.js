@@ -958,7 +958,10 @@ function flashHighlight(node) {
 
 /* ---------- view: History ----------
    The backend ships data for each saved copy (an ISO `stamp`, a byte size);
-   the browser owns all presentation, via Intl in the reader's own locale. */
+   the browser owns all presentation, via Intl in the reader's own locale.
+   The stamp is offset-less ISO, which `new Date()` parses as LOCAL time — on
+   purpose, since server and browser are the same machine — so never append
+   "Z" or otherwise convert it to UTC. */
 function fmtStamp(stampIso) {
   const d = new Date(stampIso);
   if (isNaN(d)) return "";
@@ -967,18 +970,23 @@ function fmtStamp(stampIso) {
 }
 
 /* Relative age ("2 days ago", "昨天") in the largest sensible unit; anything
-   under 90s reads as "now". numeric:"auto" lets locales say yesterday/昨天. */
+   under 90s reads as "now". numeric:"auto" lets locales say yesterday/昨天.
+   Round FIRST, then promote when the rounded value reaches the next unit, so
+   23.7h is "yesterday" (never "24 hours ago") and 11.7mo is "last year". */
 function relAge(stampIso) {
   const then = new Date(stampIso);
   if (isNaN(then) || typeof Intl.RelativeTimeFormat !== "function") return "";
   const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
   const secs = (then - Date.now()) / 1000;   // negative = in the past
-  const mag = Math.abs(secs);
-  if (mag < 90) return rtf.format(0, "second");                          // "now"
-  if (mag < 3600) return rtf.format(Math.round(secs / 60), "minute");
-  if (mag < 86400) return rtf.format(Math.round(secs / 3600), "hour");
-  if (mag < 2592000) return rtf.format(Math.round(secs / 86400), "day");
-  if (mag < 31536000) return rtf.format(Math.round(secs / 2592000), "month");
+  if (Math.abs(secs) < 90) return rtf.format(0, "second");               // "now"
+  const mins = Math.round(secs / 60);
+  if (Math.abs(mins) < 60) return rtf.format(mins, "minute");
+  const hours = Math.round(secs / 3600);
+  if (Math.abs(hours) < 24) return rtf.format(hours, "hour");
+  const days = Math.round(secs / 86400);
+  if (Math.abs(days) < 30) return rtf.format(days, "day");
+  const months = Math.round(secs / 2592000);
+  if (Math.abs(months) < 12) return rtf.format(months, "month");
   return rtf.format(Math.round(secs / 31536000), "year");
 }
 

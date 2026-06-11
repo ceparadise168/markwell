@@ -1,4 +1,5 @@
 """GUI service use-cases and the HTTP server's security boundary."""
+import datetime
 import http.client
 import shutil
 import socket
@@ -10,8 +11,8 @@ import pytest
 from conftest import make_kobo_db
 from markwell.gui import sample
 from markwell.gui.server import build_server
-from markwell.gui.service import Service, _coerce_lang, _parse_stamp
-import datetime
+from markwell.gui.service import (Service, _coerce_fmt, _coerce_lang,
+                                  _parse_stamp)
 
 
 @pytest.fixture
@@ -133,7 +134,8 @@ def test_export_from_snapshot_then_view(service, kobo_db):
 
 def test_export_lang_localizes_output_files(service, kobo_db):
     # the exported FILES follow the reader's language even though the backend
-    # itself never formats presentation text
+    # leaves History presentation (dates, ages, sizes) to the browser — job
+    # message prose still lives backend-side until Task 5
     name = _place_snapshot(service, kobo_db, "20260601-120000").name
     assert service.start_export(use_device=False, source=name,
                                 lang="zh-TW") is True
@@ -154,6 +156,26 @@ def test_export_unknown_lang_coerces_to_english(service, kobo_db):
     assert job["state"] == "done", job
     index = (service.out_dir / "index.md").read_text(encoding="utf-8")
     assert "# Kobo Highlights" in index
+
+
+def test_export_unknown_fmt_coerces_to_default(service, kobo_db):
+    # fmt is untrusted browser input with teeth: unclamped, an unknown value
+    # would render zero files and write_outputs would then prune every
+    # previously exported file as stale — silent data deletion reported as
+    # success. Junk of any shape must mean the configured default instead.
+    name = _place_snapshot(service, kobo_db, "20260601-120000").name
+    assert service.start_export(use_device=False, source=name) is True
+    assert _wait_export(service)["state"] == "done"
+    prior = [service.out_dir / "index.md", service.out_dir / "highlights.json"]
+    assert all(p.is_file() for p in prior)
+
+    for junk in ("evil", ["md"]):  # unknown string, non-string
+        assert service.start_export(use_device=False, source=name,
+                                    fmt=junk) is True
+        job = _wait_export(service)
+        assert job["state"] == "done", job
+        assert job["result"]["files"] >= 2  # default "all": md + json rendered
+        assert all(p.is_file() for p in prior)  # prior outputs not pruned
 
 
 def test_export_no_device_reports_friendly_error(service, monkeypatch):
@@ -193,6 +215,9 @@ def test_helpers():
     assert _coerce_lang("zh-TW") == "zh-TW"
     assert _coerce_lang(None) == "en"
     assert _coerce_lang(["zh-TW"]) == "en"  # unhashable junk coerces, never errors
+    assert _coerce_fmt("md", "all") == "md"
+    assert _coerce_fmt(None, "all") == "all"
+    assert _coerce_fmt(["md"], "json") == "json"  # junk type coerces, never errors
 
 
 # ---- server: security boundary ----------------------------------------------
