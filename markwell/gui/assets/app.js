@@ -505,8 +505,8 @@ function heroPool(flat) {
   // prefer short, single-line entries; fall open to the whole set so the hero is
   // never empty just because every line is long/multiline.
   const pool = (flat || []).filter((h) => {
-    const t = h.text;
-    return t && t.indexOf("\n") < 0 && t.length >= HERO_MIN && t.length <= HERO_MAX;
+    const text = h.text;
+    return text && text.indexOf("\n") < 0 && text.length >= HERO_MIN && text.length <= HERO_MAX;
   });
   return pool.length ? pool : (flat || []);
 }
@@ -525,16 +525,16 @@ function pickHero(pool) {
    the marked head and the remainder before they're joined; the only literal HTML we
    inject is the .marker-em wrapper we control — so untrusted text can never break out. */
 function markEmphasis(text) {
-  const t = text || "";
-  if (t.length <= 46) return `<span class="marker-em">${esc(t)}</span>`;
+  const quote = text || "";
+  if (quote.length <= 46) return `<span class="marker-em">${esc(quote)}</span>`;
   let head;
-  const cjk = t.match(/^[^。！？；]*[。！？；]/);     // first CJK clause, if any
+  const cjk = quote.match(/^[^。！？；]*[。！？；]/);     // first CJK clause, if any
   if (cjk && cjk[0].length <= 52) head = cjk[0];
   else {
-    const en = t.match(/^.{20,52}?[.!?](?=\s|$)/);   // else an en sentence in-window
-    head = en ? en[0] : t.slice(0, 42);              // else just the opening words
+    const en = quote.match(/^.{20,52}?[.!?](?=\s|$)/);   // else an en sentence in-window
+    head = en ? en[0] : quote.slice(0, 42);              // else just the opening words
   }
-  return `<span class="marker-em">${esc(head)}</span>${esc(t.slice(head.length))}`;
+  return `<span class="marker-em">${esc(head)}</span>${esc(quote.slice(head.length))}`;
 }
 
 function heroMetaInner(h) {

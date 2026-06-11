@@ -11,6 +11,7 @@ import pytest
 import markwell.gui
 from markwell.gui.server import build_server
 from markwell.gui.service import Service
+from markwell.render import labels
 
 # Resolve assets from the installed package, not the process cwd, so the suite
 # passes no matter where pytest is invoked from.
@@ -20,7 +21,9 @@ ASSETS = pathlib.Path(markwell.gui.__file__).parent / "assets"
 def _dicts():
     src = (ASSETS / "i18n.js").read_text(encoding="utf-8")
     start = src.index("const I18N =") + len("const I18N =")
-    end = src.index("};", start) + 1
+    # newline-anchored terminator: a future translation containing "};" can't
+    # truncate the slice; +2 keeps the closing brace inside it
+    end = src.index("\n};", start) + 2
     return json.loads(src[start:end])
 
 
@@ -29,6 +32,8 @@ def _dicts():
 def test_locales_present_and_keys_in_parity():
     d = _dicts()
     assert set(d) == {"en", "zh-TW", "ja", "ko"}
+    # cross-layer parity: the GUI speaks exactly the languages exports do
+    assert set(d) == set(labels.LABELS)
     base = set(d["en"])
     assert base, "en dictionary must not be empty"
     for loc, table in d.items():

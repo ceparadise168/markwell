@@ -37,6 +37,9 @@ the interface. It is hardened to stay private to your machine:
   DNS-rebinding attacks.
 - **No CORS headers are sent**, so browsers refuse cross-origin reads, and a
   **Content-Security-Policy** backs up the escaping of (untrusted) book text.
+- **UI strings — including all translations — reach the page only through
+  `textContent` and attribute setters, never `innerHTML`**, so the locale
+  dictionary can never become a markup-injection vector.
 - **Nothing the browser sends is used as a filesystem path or shell command** —
   "Open folder" can only reveal Markwell's own data directories, via an argument
   list (never a shell). It still **never writes to your Kobo.**
