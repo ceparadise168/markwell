@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 
+from . import labels
 from ..model import Book, year_span
 
 # Windows reserved device names — unusable as a bare filename stem (any extension).
@@ -45,21 +46,22 @@ def _stem(title, used):
     return name
 
 
-def _render_book(book):
+def _render_book(book, lang):
+    words = labels.for_lang(lang)
     hl = book.highlights
-    count = f"{len(hl)} highlight" + ("s" if len(hl) != 1 else "")
+    count = labels.highlights_phrase(lang, len(hl))
     meta = " · ".join(filter(None, [book.author, count, book.year_range]))
     blocks = [f"# {book.title}", meta]
     last_chap = None
     for h in hl:
         if h.chapter_index != last_chap:
-            blocks.append(f"── ch.{h.chapter_index} ──")
+            blocks.append(f"── {labels.chapter_line(lang, h.chapter_index)} ──")
             last_chap = h.chapter_index
         parts = []
         if h.text:
             parts.append(h.text)
         if h.note:
-            parts.append(f"**note:** {h.note}")
+            parts.append(f"**{words['note_label']}** {h.note}")
         if h.date:
             parts.append(f"*↳ {h.date}*")
         blocks.append("\n>\n".join(f"> {p}" for p in parts))
@@ -67,21 +69,27 @@ def _render_book(book):
 
 
 def _render_index(entries, meta):
+    lang = meta.get("lang")
+    words = labels.for_lang(lang)
     total = sum(e["count"] for e in entries)
     all_years = [e["year"] for e in entries if e["year"]]
     span = ""
     if all_years:
         span = year_span(min(y[:4] for y in all_years), max(y[-4:] for y in all_years))
+    total_line = labels.index_total(
+        lang,
+        f"**{labels.highlights_phrase(lang, total)}**",
+        f"**{labels.books_phrase(lang, len(entries))}**")
     lines = [
-        "# Kobo Highlights",
+        f"# {words['index_title']}",
         "",
-        f"**{total} highlights** across **{len(entries)} books**"
-        + (f" · {span}" if span else ""),
+        total_line + (f" · {span}" if span else ""),
         "",
-        f"Generated {meta['generated']} · source `{meta['source']}`"
-        f" · markwell v{meta.get('version', '?')}",
+        f"{words['generated_word']} {meta['generated']} · {words['source_word']} "
+        f"`{meta['source']}` · markwell v{meta.get('version', '?')}",
         "",
-        "| Book | Author | Highlights | Years |",
+        f"| {words['col_book']} | {words['col_author']} "
+        f"| {words['col_highlights']} | {words['col_years']} |",
         "|---|---|--:|---|",
     ]
     for e in entries:
@@ -94,14 +102,17 @@ def _render_index(entries, meta):
 def render(books: list[Book], meta: dict) -> dict[str, str]:
     """Return {filename: markdown} for every per-book file plus index.md.
 
-    `meta` carries {"generated": str, "source": str, "version": str}.
+    `meta` carries {"generated": str, "source": str, "version": str} and an
+    optional "lang" picking the label language (missing/unknown → English).
+    Labels are the only localized text — highlights and notes stay verbatim.
     """
+    lang = meta.get("lang")
     used = {"index"}  # reserve so a book stemmed "index" can't clobber index.md
     files = {}
     entries = []
     for book in books:
         fname = f"{_stem(book.title, used)}.md"
-        files[fname] = _render_book(book)
+        files[fname] = _render_book(book, lang)
         entries.append({
             "main": _main_title(book.title) or book.title,
             "author": _first_author(book.author),

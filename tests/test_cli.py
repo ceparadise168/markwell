@@ -27,6 +27,23 @@ def test_cli_format_json_only(kobo_db, tmp_path):
     assert not (out / "index.md").exists()
 
 
+def test_cli_lang_flows_through_to_markdown(kobo_db, tmp_path):
+    out = tmp_path / "out"
+    main(["--db", str(kobo_db), "--out", str(out), "--lang", "zh-TW",
+          "--backup-dir", str(tmp_path / "backups")])
+    assert "Kobo 書摘" in (out / "index.md").read_text(encoding="utf-8")
+    book_one = (out / "Book_One.md").read_text(encoding="utf-8")
+    assert "**筆記：** My own note" in book_one  # the note renders localized
+
+
+def test_cli_invalid_lang_exits_2(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["--lang", "xx", "--out", str(tmp_path / "out"),
+              "--backup-dir", str(tmp_path / "backups")])
+    assert exc.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err  # argparse rejects pre-run
+
+
 def test_cli_missing_db_exits(tmp_path):
     with pytest.raises(SystemExit):
         main(["--db", str(tmp_path / "nope.sqlite"), "--out", str(tmp_path / "o")])

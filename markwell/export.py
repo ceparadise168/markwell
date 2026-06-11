@@ -20,19 +20,21 @@ from .render import markdown as md_render
 _MANIFEST = ".markwell-manifest.json"
 
 
-def build_meta(source: str, freshness: str) -> dict:
+def build_meta(source: str, freshness: str, lang: str = "en") -> dict:
     """Assemble the render `meta` block both front-ends pass to the renderers.
 
     The renderers read exactly these keys (generated/source/source_freshness/
-    version); building them in one place keeps the CLI and GUI from drifting on
-    the shape. `source` is the snapshot/sample name; `freshness` is one of
-    "device" | "cached_snapshot" | "sample".
+    version/lang); building them in one place keeps the CLI and GUI from
+    drifting on the shape. `source` is the snapshot/sample name; `freshness` is
+    one of "device" | "cached_snapshot" | "sample"; `lang` picks the export
+    label language (Markdown only — the JSON document stays language-neutral).
     """
     return {
         "generated": datetime.date.today().isoformat(),
         "source": source,
         "source_freshness": freshness,
         "version": __version__,
+        "lang": lang,
     }
 
 
@@ -40,7 +42,7 @@ def build_files(books: list[Book], meta: dict, fmt: str) -> dict[str, str]:
     """Render `books` to {filename: content} for the requested format.
 
     `fmt` is "md", "json", or "all". `meta` carries generated/source/
-    source_freshness/version, exactly as the renderers expect.
+    source_freshness/version/lang, exactly as the renderers expect.
     """
     files: dict[str, str] = {}
     if fmt in ("md", "all"):

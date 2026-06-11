@@ -92,7 +92,7 @@ def _run(args):
         print("No highlights or notes found in the database.", file=sys.stderr)
         sys.exit(3)
 
-    meta = build_meta(pathlib.Path(src).name, freshness)
+    meta = build_meta(pathlib.Path(src).name, freshness, lang=args.lang)
     files = build_files(books, meta, args.format)
     n = write_outputs(files, args.out)
     total = sum(len(b.highlights) for b in books)
@@ -107,6 +107,8 @@ def main(argv=None):
         description="Safely back up and export Kobo highlights and notes.")
     ap.add_argument("--format", choices=["md", "json", "all"], default="all",
                     help="what to export (default: all)")
+    ap.add_argument("--lang", choices=["en", "zh-TW", "ja", "ko"], default="en",
+                    help="language for Markdown export labels (default: en)")
     ap.add_argument("--snapshot-only", action="store_true",
                     help="snapshot the device and exit (no export)")
     ap.add_argument("--db", help="export from a snapshot (skips device read)")
