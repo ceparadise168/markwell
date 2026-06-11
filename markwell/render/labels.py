@@ -24,7 +24,6 @@ LABELS: dict[str, dict[str, str]] = {
         "col_author": "Author",
         "col_highlights": "Highlights",
         "col_years": "Years",
-        "chapter_abbrev": "ch.",
     },
     "zh-TW": {
         "index_title": "Kobo 書摘",
@@ -38,7 +37,6 @@ LABELS: dict[str, dict[str, str]] = {
         "col_author": "作者",
         "col_highlights": "劃線數",
         "col_years": "年份",
-        "chapter_abbrev": "章",
     },
     "ja": {
         "index_title": "Kobo ハイライト",
@@ -52,7 +50,6 @@ LABELS: dict[str, dict[str, str]] = {
         "col_author": "著者",
         "col_highlights": "ハイライト数",
         "col_years": "年",
-        "chapter_abbrev": "章",
     },
     "ko": {
         "index_title": "Kobo 하이라이트",
@@ -66,7 +63,6 @@ LABELS: dict[str, dict[str, str]] = {
         "col_author": "저자",
         "col_highlights": "하이라이트 수",
         "col_years": "연도",
-        "chapter_abbrev": "장",
     },
 }
 
@@ -74,7 +70,7 @@ LABELS: dict[str, dict[str, str]] = {
 # ("5 則劃線"), while ja/ko measure words attach directly ("5件" / "5개").
 _NUM_GAP = {"en": " ", "zh-TW": " ", "ja": "", "ko": ""}
 
-# Chapter marker body. A flat template rather than chapter_abbrev + number,
+# Chapter marker body. A flat template rather than an abbrev word + number,
 # because zh-TW/ja wrap the number (第3章) while en prefixes and ko suffixes it.
 _CHAPTER_LINE = {"en": "ch.{n}", "zh-TW": "第{n}章", "ja": "第{n}章", "ko": "{n}장"}
 
@@ -83,7 +79,7 @@ _CHAPTER_LINE = {"en": "ch.{n}", "zh-TW": "第{n}章", "ja": "第{n}章", "ko": 
 _INDEX_TOTAL = {
     "en": "{highlights} across {books}",
     "zh-TW": "{highlights}，共 {books}",
-    "ja": "{highlights} · 全 {books}",
+    "ja": "{highlights} · 全{books}",  # 全 hugs the count: 「全2冊」, never 「全 2冊」
     "ko": "{highlights} · 총 {books}",
 }
 
@@ -111,8 +107,15 @@ def highlights_phrase(lang: str | None, n: int) -> str:
 
 
 def books_phrase(lang: str | None, n: int) -> str:
-    """Book count phrase: "4 books", "4 本書", "4冊", "4권"."""
-    return f"{n}{_pick(_NUM_GAP, lang)}{_pick(LABELS, lang)['books_word']}"
+    """Book count phrase: "1 book", "4 books", "4 本書", "4冊", "4권"."""
+    words = _pick(LABELS, lang)
+    word = words["books_word"]
+    if n == 1 and words is LABELS["en"]:
+        # English grammar, not a translatable label: CJK locales have no
+        # plural, so the singular lives here instead of widening the public
+        # key set that the locale-parity test guards.
+        word = "book"
+    return f"{n}{_pick(_NUM_GAP, lang)}{word}"
 
 
 def index_total(lang: str | None, highlights: str, books: str) -> str:

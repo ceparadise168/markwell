@@ -69,6 +69,28 @@ def test_markdown_cjk_only_title_yields_nonempty_stable_stem():
     assert names[0] == "納瓦爾寶典.md"      # CJK kept verbatim, non-empty, stable
 
 
+def test_markdown_en_index_total_singularizes_at_one():
+    one = render([Book("One", "A", "v1", [Highlight("x", date="2024-01-01")])],
+                 META)
+    assert "**1 highlight** across **1 book**" in one["index.md"]
+    many = render([
+        Book("One", "A", "v1", [Highlight("x", date="2024-01-01"),
+                                Highlight("y", date="2024-02-01")]),
+        Book("Two", "B", "v2", [Highlight("z", date="2025-01-01")]),
+    ], META)
+    assert "**3 highlights** across **2 books**" in many["index.md"]
+
+
+def test_markdown_ja_index_total_keeps_zen_against_count():
+    books = [
+        Book("One", "A", "v1", [Highlight("x", date="2024-01-01")]),
+        Book("Two", "B", "v2", [Highlight("y", date="2025-01-01")]),
+    ]
+    index = render(books, {**META, "lang": "ja"})["index.md"]
+    # 全 hugs the bolded count — 「全**2冊**」, not 「全 **2冊**」.
+    assert "**2件のハイライト** · 全**2冊**" in index
+
+
 def test_markdown_zh_tw_localizes_labels_not_highlight_text():
     books = [Book("My Book", "Jane Doe", "v1", [
         Highlight("A passage", note="my note", date="2024-01-01", chapter_index=1),

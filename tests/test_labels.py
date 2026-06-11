@@ -17,6 +17,7 @@ def test_unknown_lang_falls_back_to_english():
 def test_chapter_line_per_locale():
     assert labels.chapter_line("en", 3) == "ch.3"
     assert labels.chapter_line("zh-TW", 3) == "第3章"
+    assert labels.chapter_line("ja", 3) == "第3章"
     assert labels.chapter_line("ko", 3) == "3장"
 
 
