@@ -1,7 +1,10 @@
 # Markwell Community Release — Design
 
 Date: 2026-06-11
-Status: awaiting bless
+Status: **blessed by Eric 2026-06-11** (with amendments: unsigned launch; no
+donations until real costs appear, but track downloads and keep maintainer
+contact visible; watermark default-on; no zh-CN; NEW landing site on Eric's
+Cloudflare domain — see §3.7 and §6)
 Scope: turn Markwell from a polished private tool into a launchable open-source
 product for the global Kobo community (zh-TW / ja / ko / en, mostly
 non-technical), with multi-format export, cloud-folder backup, share cards,
@@ -72,8 +75,9 @@ beautiful quote card — all offline, free, no account.
   localized — that is what non-technical users see).
 - `.apkg` builder, EPUB export, auto-update, telemetry (never), zh-CN README
   (cheap to add on request — see §6).
-- Buying code-signing certs (Eric's call, §6; everything else ships
-  regardless).
+- Buying code-signing certs (decided: launch unsigned, revisit at traction).
+- Donations (decided: none until real costs — server or signing fees —
+  appear; no FUNDING.yml now, per "don't add what hasn't happened").
 
 ---
 
@@ -199,12 +203,26 @@ cloud folder you already have.**
 - **READMEs:** `README.md` (en, canonical) + `README.zh-TW.md` +
   `README.ja.md` + `README.ko.md`, cross-linked at the top; refreshed
   screenshots (Review + share card + settings); trust copy per the existing
-  distribution plan ("No cloud. No account. Never writes to your Kobo.").
+  distribution plan ("No cloud. No account. Never writes to your Kobo.");
+  **download-count badges** (shields.io GitHub-releases total + PyPI monthly)
+  as public, verifiable adoption proof; a **Maintainer section** with Eric's
+  contact (GitHub @ceparadise168 + email) — donations deliberately absent
+  until real costs appear.
+- **Download stats (no telemetry, ever):** the app stays zero-network. Counts
+  come from sources that exist anyway — GitHub Releases per-asset
+  `download_count` (landing-page buttons deep-link release assets, so every
+  download is counted), PyPI public stats (pypistats), and Cloudflare Web
+  Analytics (cookieless, dashboard toggle) for site visits. A short
+  `docs/maintainer-stats.md` records the `gh api` / pypistats one-liners so
+  the numbers are always one command away.
 - **.github/:** issue forms — bug report (asks OS, `markwell --version`, Kobo
   firmware), **dedicated "unsupported schema" report form** (our #1 expected
   community issue; asks for firmware version + the preflight-safe details we
   need), feature request; PR template (reminds of the non-negotiable
-  invariants); FUNDING.yml (handles per Eric, §6).
+  invariants). No FUNDING.yml for now (decided).
+- **In-app About:** the GUI footer gains a tiny About line — version, "open
+  source · MIT", maintainer link to the site/GitHub. User-initiated links
+  only; the app still never makes a network request itself.
 - **Workflows:** `release.yml` — on tag: build PyInstaller artifacts
   (macOS + Windows), **run the privacy preflight as a hard gate**, attach to a
   draft GitHub Release; `publish-pypi.yml` — PyPI Trusted Publishing (free, no
@@ -219,6 +237,33 @@ cloud folder you already have.**
 **Going public (repo flip, PyPI publish, community announcements) stays a
 manual Eric action** — outward-facing and irreversible; everything will be
 ready so it is one button.
+
+### 3.7 Landing site — Cloudflare Pages (Phase 6)
+
+Most non-technical readers will never visit a GitHub repo. A small static
+site is the front door; Eric already has a Cloudflare domain + hosting.
+
+- **Tech:** hand-written static HTML/CSS in `site/` in this repo (no
+  framework, no build step — same philosophy as the GUI assets, shares its
+  visual language). Cloudflare Pages serves the directory as-is.
+- **Content (per locale — `/` en, `/zh-tw/`, `/ja/`, `/ko/`):** hero with the
+  one-line promise in the reader's language; the three trust statements; 2–3
+  screenshots (library, book view, share card); **download buttons
+  deep-linking GitHub `releases/latest/download/<asset>`** (auto-newest, and
+  every click lands in GitHub's download counts); a "prefer
+  pipx/PyPI?" line for technical users; per-OS "how to open an unsigned app"
+  note; footer with maintainer contact + GitHub link. Visible language
+  switcher on every page (same convention as the app).
+- **Analytics:** Cloudflare Web Analytics — cookieless, GDPR-clean, enabled
+  by a dashboard toggle (zero code in v1; CF injects the beacon for Pages).
+- **SEO niceties:** OG/social-preview tags ship; `canonical`/`hreflang` are
+  included with the final origin filled in at deploy (deploy guide step,
+  since the exact domain is Eric's to connect).
+- **Deploy guide:** `site/DEPLOY.md` — connect repo to Cloudflare Pages
+  (output dir `site/`), attach the domain, flip on Web Analytics. **Creating
+  the Pages project, attaching the domain, and enabling analytics are Eric's
+  manual steps** (his Cloudflare account); everything else is committed and
+  ready.
 
 ---
 
@@ -253,10 +298,13 @@ The i18n move *strengthens* the layering (backend → data/codes, frontend →
 presentation). Exactly one invariant is consciously amended (browser-supplied
 data-dir) with a fenced, validated, documented design. Stdlib-only holds.
 
-**Business.** Cost to run: $0 forever (no paid APIs anywhere). Growth loop:
-share-card watermark + four-language READMEs + PyPI discoverability.
-Donations follow the already-blessed plan (after value, never blocking). The
-only money decision is code signing (§6) — and the launch does not wait on it.
+**Business.** Cost to run: $0 (no paid APIs; Cloudflare Pages and GitHub
+Actions free tiers). Growth loop: share-card watermark + four-language
+READMEs + PyPI discoverability + a real front-door site on Eric's domain.
+No donations until real costs appear (decided); the asset being built instead
+is a **publicly verifiable maintainer track record** — download badges,
+release history, community issue handling — with Eric's contact on every
+surface. Launch does not wait on code signing (decided: unsigned).
 
 ---
 
@@ -274,24 +322,30 @@ parallelize where independent.
 | 2 formats | csv; anki tsv; html renderer; format registry + CLI/GUI plumbing | Excel CJK (BOM test); `all` semantics change documented |
 | 3 review + cards | Review view; canvas card generator + CJK wrapping; entry points | long-quote layout; clipboard API fallbacks |
 | 4 cloud + portability | settings + data-dir flow + config; zip archive; cloud guide ×4 locales | the fenced path-validation endpoint (adversarial pass) |
-| 5 launch pack | READMEs ×4; issue forms/PR template/FUNDING; release + PyPI workflows; CHANGELOG + 0.2.0; final verification | preflight gate wired into release; screenshots current |
+| 5 launch pack | READMEs ×4 + badges + maintainer contact; issue forms/PR template; release + PyPI workflows; maintainer-stats doc; in-app About; CHANGELOG + 0.2.0; final verification | preflight gate wired into release; screenshots current |
+| 6 landing site | `site/` static pages ×4 locales; download deep-links; OG tags; DEPLOY.md for Cloudflare Pages | copy parity across locales; unsigned-app guidance per OS |
 
 Done means: suite green on CI matrix, preflight clean on a real artifact,
-manual GUI pass in 4 locales, all docs cross-linked, repo one-button-ready
-for Eric to flip public.
+manual GUI pass in 4 locales, all docs cross-linked, site ready to connect,
+repo one-button-ready for Eric to flip public.
 
 ---
 
-## 6. Decisions reserved for Eric (defaults proposed)
+## 6. Decisions — resolved by Eric, 2026-06-11
 
-1. **Code signing.** Apple notarization = USD 99/yr; Windows cert ≈ USD
-   200+/yr. **Default: launch unsigned** with clear per-locale "how to open"
-   instructions (right-click → Open / SmartScreen → More info → Run anyway),
-   revisit at traction. pipx/PyPI path is unaffected.
-2. **Donation platform(s)** for FUNDING.yml + in-app footer. **Default:
-   GitHub Sponsors placeholder committed, inactive until you add handles.**
-3. **Share-card watermark.** **Default: small "Made with Markwell" ON with a
-   one-click off toggle** — the organic growth loop, user stays in control.
-4. **zh-CN.** **Default: not in v1** (Kobo has no mainland presence; zh-TW
-   first), add on community request — the i18n system makes it a
-   dictionary-file PR.
+1. **Code signing: launch unsigned.** Per-locale "how to open" instructions
+   ship (right-click → Open / SmartScreen → More info → Run anyway); revisit
+   when traction justifies the cost. pipx/PyPI path unaffected.
+2. **Donations: not now.** No FUNDING.yml, no donate UI. Open it only when
+   real costs (server, signing fees) appear. Instead: **download counts are
+   tracked** (GitHub Releases asset counts + PyPI stats + Cloudflare Web
+   Analytics — all free, none of them telemetry in the app) as the public
+   record of the project's reach, and **maintainer contact stays visible**
+   (README Maintainer section, site footer, in-app About).
+3. **Share-card watermark: default ON** (small "Made with Markwell"), 
+   one-click off.
+4. **zh-CN: not in v1.** zh-TW first; the i18n system makes zh-CN a
+   dictionary-file PR when the community asks.
+5. **Landing site: yes** (Eric's amendment) — static site in `site/`,
+   deployed on Eric's Cloudflare domain via Pages; Pages project + domain
+   attach + analytics toggle are Eric's manual steps.
