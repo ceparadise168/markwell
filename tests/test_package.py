@@ -9,7 +9,7 @@ _PYINSTALLER_ENTRY = _REPO / "packaging" / "pyinstaller" / "entry.py"
 
 def test_package_imports_with_version():
     import markwell
-    assert markwell.__version__ == "0.1.0"
+    assert markwell.__version__ == "0.2.0"
 
 
 def test_desktop_entrypoint_imports():

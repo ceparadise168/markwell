@@ -1,7 +1,7 @@
 from markwell.model import Book, Highlight
 from markwell.render.anki import render
 
-META = {"generated": "2026-06-01", "source": "snap.sqlite", "version": "0.1.0"}
+META = {"generated": "2026-06-01", "source": "snap.sqlite", "version": "0.2.0"}
 
 
 def _books():

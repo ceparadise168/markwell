@@ -1,7 +1,7 @@
 from markwell.model import Book, Highlight
 from markwell.render.markdown import render
 
-META = {"generated": "2026-06-01", "source": "snap.sqlite", "version": "0.1.0"}
+META = {"generated": "2026-06-01", "source": "snap.sqlite", "version": "0.2.0"}
 
 
 def test_markdown_renders_book_file_and_index():
@@ -20,7 +20,7 @@ def test_markdown_renders_book_file_and_index():
     index = files["index.md"]
     assert "[My Book](My_Book.md)" in index   # main title only (subtitle dropped)
     assert "Jane Doe" in index                # first author only
-    assert "· markwell v0.1.0" in index       # version stamped in the footer
+    assert "· markwell v0.2.0" in index       # version stamped in the footer
 
 
 def test_markdown_dedupes_filename_collisions():

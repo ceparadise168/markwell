@@ -3,7 +3,7 @@ import re
 from markwell.model import Book, Highlight
 from markwell.render.html import render
 
-META = {"generated": "2026-06-01", "source": "snap.sqlite", "version": "0.1.0"}
+META = {"generated": "2026-06-01", "source": "snap.sqlite", "version": "0.2.0"}
 
 
 def _books():
@@ -45,7 +45,7 @@ def test_html_header_and_footer_carry_meta():
     doc = _doc()
     assert "Generated 2026-06-01" in doc
     assert "snap.sqlite" in doc
-    assert "markwell v0.1.0 · MIT" in doc
+    assert "markwell v0.2.0 · MIT" in doc
 
 
 def test_html_escapes_all_book_derived_text():

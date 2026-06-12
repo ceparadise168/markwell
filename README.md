@@ -114,7 +114,7 @@ from the dated `.sqlite` it was last captured in (see [Why](#why)).
 ```json
 {
   "schema": "markwell/1",
-  "generator": "markwell/0.1.0",
+  "generator": "markwell/0.2.0",
   "generated": "2026-06-01",
   "source": "KoboReader-20260601-101010.sqlite",
   "source_freshness": "device",

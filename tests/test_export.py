@@ -8,7 +8,7 @@ from markwell.model import Book, Highlight
 from markwell.render import json as json_render
 
 _META = {"generated": "2026-06-02", "source": "snap.sqlite",
-         "source_freshness": "device", "version": "0.1.0"}
+         "source_freshness": "device", "version": "0.2.0"}
 _BOOKS = [Book("A Title", "An Author", "vol-1",
                [Highlight("a passage", "a note", "2025-01-01", 1)])]
 

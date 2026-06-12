@@ -4,7 +4,7 @@ from markwell.model import Book, Highlight
 from markwell.render.json import render
 
 META = {"generated": "2026-06-01", "source": "snap.sqlite",
-        "source_freshness": "device", "version": "0.1.0"}
+        "source_freshness": "device", "version": "0.2.0"}
 
 
 def test_json_render_schema_and_content():
@@ -18,7 +18,7 @@ def test_json_render_schema_and_content():
     assert doc["generated"] == "2026-06-01"
     assert doc["source"] == "snap.sqlite"
     assert doc["source_freshness"] == "device"
-    assert doc["generator"] == "markwell/0.1.0"
+    assert doc["generator"] == "markwell/0.2.0"
     # additive top-level fields within schema major 1; "schema" stays first
     assert set(doc) == {"schema", "generated", "source",
                         "source_freshness", "generator", "books"}
