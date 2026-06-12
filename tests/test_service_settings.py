@@ -5,6 +5,7 @@ the browser sends is used as a filesystem path. These tests pin the fence:
 validation order, the exact (stable, i18n-ready) error messages, the
 copy-never-move relocation semantics, and config persistence.
 """
+import os
 import pathlib
 import sys
 
@@ -172,6 +173,65 @@ def test_change_persists_data_dir_and_preserves_other_config_keys(service,
     saved = config.load()
     assert saved["data_dir"] == str(target.resolve())
     assert saved["some_future_key"] == "kept"
+
+
+# ---- symlinks: never listed as snapshots, never copied by relocation ---------
+
+def _symlink_or_skip(target, link):
+    """Plant a symlink, or skip where the platform refuses (e.g. Windows
+    without the symlink privilege)."""
+    try:
+        os.symlink(str(target), str(link),
+                   target_is_directory=pathlib.Path(target).is_dir())
+    except (OSError, NotImplementedError):
+        pytest.skip("cannot create symlinks on this platform")
+
+
+def test_snapshot_list_excludes_symlinked_snapshot(service, tmp_path):
+    # cloud sync can plant a KoboReader-*.sqlite-named link in backups/; it
+    # must never be listed, win latest-pick, or become loadable by name
+    outside = tmp_path / "outside-db"
+    outside.write_bytes(b"NOT YOUR SNAPSHOT")
+    _symlink_or_skip(outside,
+                     service.backup_dir / "KoboReader-29990101-000000.sqlite")
+    rows = service.snapshot_list()
+    assert [r["name"] for r in rows] == [
+        "KoboReader-20260601-120000.sqlite",
+        "KoboReader-20260101-090000.sqlite"]
+    assert rows[0]["is_latest"]  # the real newest still wins latest-pick
+
+
+def test_change_never_copies_symlinks(service, tmp_path):
+    # links planted in output/ (file and directory) and backups/ must not be
+    # dereferenced into the new folder — relocation copies only real files
+    secret = tmp_path / "secret-outside"
+    secret.write_text("private", encoding="utf-8")
+    _symlink_or_skip(secret, service.out_dir / "leak.md")
+    outside_dir = tmp_path / "outside-dir"
+    outside_dir.mkdir()
+    (outside_dir / "id_rsa").write_text("SECRET", encoding="utf-8")
+    os.symlink(str(outside_dir), str(service.out_dir / "evil"),
+               target_is_directory=True)
+    outside_db = tmp_path / "outside-db"
+    outside_db.write_bytes(b"NOT YOUR SNAPSHOT")
+    os.symlink(str(outside_db),
+               str(service.backup_dir / "KoboReader-29990101-000000.sqlite"))
+
+    target = tmp_path / "cloud" / "Markwell"
+    result = service.change_data_dir(str(target))
+
+    # counts cover only the real files (2 snapshots + 3 outputs from _seed)
+    assert result["copied_snapshots"] == 2
+    assert result["copied_outputs"] == 3
+    resolved = target.resolve()
+    copied = sorted(p.relative_to(resolved).as_posix()
+                    for p in resolved.rglob("*") if not p.is_dir())
+    assert copied == [
+        "backups/KoboReader-20260101-090000.sqlite",
+        "backups/KoboReader-20260601-120000.sqlite",
+        "output/cards/Book_One.png",
+        "output/highlights.json",
+        "output/index.md"]
 
 
 # ---- detect_cloud_roots -------------------------------------------------------

@@ -40,9 +40,29 @@ the interface. It is hardened to stay private to your machine:
 - **UI strings — including all translations — reach the page only through
   `textContent` and attribute setters, never `innerHTML`**, so the locale
   dictionary can never become a markup-injection vector.
-- **Nothing the browser sends is used as a filesystem path or shell command** —
-  "Open folder" can only reveal Markwell's own data directories, via an argument
-  list (never a shell). It still **never writes to your Kobo.**
+- **Nothing the browser sends is used as a filesystem path or shell command**,
+  with one fenced exception — the Settings "custom path" field, where you point
+  Markwell's data folder somewhere of your choosing. The suggested cloud
+  folders and the home-folder default are resolved entirely server-side; only
+  that custom value crosses, and it must pass a validation fence: absolute-only
+  → symlink-resolved → never a file → never inside a connected Kobo → a
+  writability probe. Changing folders only ever **copies** — the old folder is
+  left untouched; Markwell has no code path that deletes user data. "Open
+  folder" can only reveal Markwell's own data directories, via an argument list
+  (never a shell). It still **never writes to your Kobo.**
+- **A saved folder choice is re-validated at every launch** — including the
+  Kobo check, against whatever device is plugged in now — and ignored with a
+  warning if it no longer passes. The `--data-dir` command-line flag is exempt
+  by design: whoever types a flag owns it, exactly like the CLI.
+- **Settings live in `~/.markwell/config.json`** — it holds only the folder
+  path, never a secret, and is stored outside the data folder, so it is never
+  swept into a cloud-synced library.
+- **Symlinks are never followed** when archiving or relocating your library —
+  and Markwell never creates any — so a link planted in a synced folder cannot
+  pull outside content into an archive you share.
+- **Archives are named to the second and written atomically** — a half-written
+  ZIP is never left behind for cloud sync to spread; a second archive within
+  the same second replaces the first.
 - It makes **no network connections** and runs only while you keep it open.
 
 ## Reporting a vulnerability

@@ -155,10 +155,13 @@ def resolve_data_dir(flag_value: str | None) -> pathlib.Path:
     """The data dir the server should start with.
 
     Precedence: an explicit --data-dir flag > the saved config choice (if it
-    still passes validation) > `default_data_dir()`. The flag is taken as-is —
-    whoever types a flag owns it, exactly like the CLI. The saved choice is
-    re-validated at every boot because the world changes between runs (a
-    folder can become a file; a saved dir can become the Kobo's mount):
+    still passes validation) > `default_data_dir()`. The flag is taken as-is:
+    it bypasses the entire _validate_data_dir fence, Kobo guard included —
+    whoever types a flag owns it, exactly like the CLI. Paths from the
+    Settings screen or the config file never get that pass; they are
+    re-validated every time. The saved choice is re-checked at every boot
+    because the world changes between runs (a folder can become a file; a
+    saved dir can become the Kobo's mount):
     anything invalid is IGNORED with a stderr warning, never an exception — a
     stale config must not be able to wedge startup. No writability probe
     here: a cloud folder may not be mounted yet at boot, and refusing to
@@ -260,7 +263,11 @@ class Service:
     def _snapshots(self) -> list[pathlib.Path]:
         if not self.backup_dir.is_dir():
             return []
-        return sorted(self.backup_dir.glob(_SNAP_GLOB))
+        # symlinks are never followed — a synced folder can carry links
+        # pointing outside the library, so a linked "snapshot" must never
+        # be listed, picked as latest, archived, or copied
+        return sorted(p for p in self.backup_dir.glob(_SNAP_GLOB)
+                      if not p.is_symlink())
 
     def status(self) -> dict:
         snaps = self._snapshots()
@@ -473,8 +480,9 @@ class Service:
         and the whole output/ tree are copied over, skipping any name already
         present at the destination — so a retry never re-copies and NEVER
         overwrites a destination file — and the old folder is left exactly as
-        it was. The reader deletes the old copy themselves, if and when they
-        choose; Markwell has no code path that deletes user data.
+        it was. Symlinks are never copied or followed. The reader deletes the
+        old copy themselves, if and when they choose; Markwell has no code
+        path that deletes user data.
 
         Concurrency: refused while an export runs, and the directory switch
         happens under the job lock, so a running export always sees one
@@ -502,7 +510,11 @@ class Service:
         copied_snapshots = 0
         if old_backup.is_dir():
             new_backup.mkdir(parents=True, exist_ok=True)
-            for snap in sorted(old_backup.glob(_SNAP_GLOB)):
+            # _snapshots() reads backup_dir, which still points at the OLD
+            # location here, and already drops symlinked entries — symlinks
+            # are never followed: a synced folder can carry links pointing
+            # outside the library, and copy2 would dereference them.
+            for snap in self._snapshots():
                 dest = new_backup / snap.name
                 if dest.exists():
                     continue
@@ -513,8 +525,11 @@ class Service:
         if old_out.is_dir():
             # sorted() materializes the walk BEFORE the first copy, so a
             # target nested under the old tree can never re-discover (and
-            # endlessly re-copy) its own fresh copies.
-            for src in sorted(p for p in old_out.rglob("*") if p.is_file()):
+            # endlessly re-copy) its own fresh copies. Symlinks are never
+            # followed — a synced folder can carry links pointing outside
+            # the library (rglob also refuses to descend into linked dirs).
+            for src in sorted(p for p in old_out.rglob("*")
+                              if p.is_file() and not p.is_symlink()):
                 dest = new_out / src.relative_to(old_out)
                 if dest.exists():
                     continue
@@ -541,8 +556,12 @@ class Service:
         complete pair, not a growing pile of history. The zip is written to
         the data-dir ROOT, not under output/ or backups/, so the output walk
         and the KoboReader-*.sqlite glob can never sweep an old archive into
-        a new one. Read-only with respect to user data: sources are only
-        read, never moved or deleted.
+        a new one. It is staged as ``<name>.zip.tmp`` and atomically replaced
+        into place — a crash or full disk never leaves a half-written archive
+        behind for cloud sync to spread, and re-archiving within the same
+        second replaces that second's archive. Read-only with respect to user
+        data: sources are only read, never moved or deleted, and symlinks are
+        never followed.
         """
         with self._lock:
             if self._job.state == "running":
@@ -551,20 +570,30 @@ class Service:
         latest = snaps[-1] if snaps else None
         out_files = []
         if self.out_dir.is_dir():
+            # symlinks are never followed — a synced folder can carry links
+            # pointing outside the library, and zf.write would copy the
+            # TARGET's content into a zip the reader then shares (rglob also
+            # refuses to descend into linked dirs).
             out_files = sorted(p for p in self.out_dir.rglob("*")
-                               if p.is_file())
+                               if p.is_file() and not p.is_symlink())
         if latest is None and not out_files:
             raise ValueError("nothing to archive")
         stamp = datetime.datetime.now().strftime(_STAMP_FMT)
         name = f"Markwell-archive-{stamp}.zip"
         path = self.data_dir / name
+        tmp = path.with_name(path.name + ".tmp")
         files = 0
-        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for src in out_files:
-                zf.write(src,
-                         "output/" + src.relative_to(self.out_dir).as_posix())
-                files += 1
-            if latest is not None:
-                zf.write(latest, "backups/" + latest.name)
-                files += 1
+        try:
+            with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+                for src in out_files:
+                    zf.write(src, "output/"
+                             + src.relative_to(self.out_dir).as_posix())
+                    files += 1
+                if latest is not None:
+                    zf.write(latest, "backups/" + latest.name)
+                    files += 1
+            tmp.replace(path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
         return {"name": name, "path": str(path), "files": files}

@@ -1,10 +1,21 @@
 """The one-click ZIP archive: output tree + latest snapshot, sources untouched."""
+import os
 import pathlib
 import zipfile
 
 import pytest
 
 from markwell.gui.service import Service
+
+
+def _symlink_or_skip(target, link):
+    """Plant a symlink, or skip where the platform refuses (e.g. Windows
+    without the symlink privilege)."""
+    try:
+        os.symlink(str(target), str(link),
+                   target_is_directory=pathlib.Path(target).is_dir())
+    except (OSError, NotImplementedError):
+        pytest.skip("cannot create symlinks on this platform")
 
 
 @pytest.fixture
@@ -97,3 +108,88 @@ def test_archive_zip_is_never_swept_into_the_next_archive(service):
     with zipfile.ZipFile(second["path"]) as zf:
         assert not any(n.endswith(".zip") for n in zf.namelist())
         assert zf.testzip() is None
+
+
+# ---- symlinks: never followed into an archive --------------------------------
+
+def test_archive_excludes_symlinked_file_in_output(service, tmp_path):
+    # cloud sync can plant a link in output/ pointing anywhere; dereferencing
+    # it would copy the TARGET's content into a zip the reader then shares
+    _seed_outputs(service, names=("index.md",))
+    secret = tmp_path / "secret-outside"
+    secret.write_text("private key material", encoding="utf-8")
+    _symlink_or_skip(secret, service.out_dir / "leak.md")
+
+    result = service.make_archive()
+
+    assert result["files"] == 1
+    with zipfile.ZipFile(result["path"]) as zf:
+        assert zf.namelist() == ["output/index.md"]
+
+
+def test_archive_never_descends_into_symlinked_directory(service, tmp_path):
+    # a symlinked DIRECTORY is the same leak one hop removed: the files
+    # reached through it are not themselves links, so the walk must refuse
+    # to descend rather than rely on filtering link entries
+    _seed_outputs(service, names=("index.md",))
+    outside = tmp_path / "outside-dir"
+    outside.mkdir()
+    (outside / "id_rsa").write_text("SECRET", encoding="utf-8")
+    _symlink_or_skip(outside, service.out_dir / "evil")
+
+    result = service.make_archive()
+
+    assert result["files"] == 1
+    with zipfile.ZipFile(result["path"]) as zf:
+        assert zf.namelist() == ["output/index.md"]
+
+
+def test_archive_never_picks_a_symlinked_snapshot_as_latest(service, tmp_path):
+    _seed_snapshots(service)
+    outside = tmp_path / "outside-db"
+    outside.write_bytes(b"NOT YOUR SNAPSHOT")
+    # the name sorts AFTER every real snapshot, so it would win latest-pick
+    _symlink_or_skip(outside,
+                     service.backup_dir / "KoboReader-29990101-000000.sqlite")
+
+    result = service.make_archive()
+
+    with zipfile.ZipFile(result["path"]) as zf:
+        assert zf.namelist() == ["backups/KoboReader-20260601-120000.sqlite"]
+        assert zf.read("backups/KoboReader-20260601-120000.sqlite"
+                       ) == b"snapshot 20260601-120000"
+
+
+def test_archive_with_only_a_symlinked_snapshot_is_nothing_to_archive(
+        service, tmp_path):
+    service.backup_dir.mkdir(parents=True)
+    outside = tmp_path / "outside-db"
+    outside.write_bytes(b"NOT YOUR SNAPSHOT")
+    _symlink_or_skip(outside,
+                     service.backup_dir / "KoboReader-20260601-120000.sqlite")
+    with pytest.raises(ValueError) as err:
+        service.make_archive()
+    assert str(err.value) == "nothing to archive"
+
+
+# ---- atomic write -------------------------------------------------------------
+
+def test_archive_failure_leaves_no_zip_and_no_tmp(service, monkeypatch):
+    _seed_outputs(service)
+
+    def boom(self, *args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(zipfile.ZipFile, "write", boom)
+    with pytest.raises(OSError):
+        service.make_archive()
+    # no half-written archive and no stray staging file for cloud sync to spread
+    assert list(service.data_dir.glob("*.zip")) == []
+    assert list(service.data_dir.glob("*.tmp")) == []
+
+
+def test_archive_success_leaves_only_the_final_zip(service):
+    _seed_outputs(service, names=("index.md",))
+    result = service.make_archive()
+    assert sorted(p.name for p in service.data_dir.iterdir()) == [
+        result["name"], "output"]
