@@ -4,6 +4,7 @@
 
 > *Mark well what you read.* Back up and export your Kobo highlights into a corpus you own.
 
+[![Website](https://img.shields.io/badge/Website-markwell.page-2e7d6b)](https://markwell.page)
 [![CI](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml/badge.svg)](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/ceparadise168/markwell/total)](https://github.com/ceparadise168/markwell/releases)
 [![PyPI](https://img.shields.io/pypi/v/markwell)](https://pypi.org/project/markwell/)

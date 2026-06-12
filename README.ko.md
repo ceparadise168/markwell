@@ -4,6 +4,7 @@
 
 > *읽은 문장을 오래 간직하세요.* Kobo 하이라이트를 백업하고 내보내, 온전히 나만의 기록으로 남기세요.
 
+[![Website](https://img.shields.io/badge/Website-markwell.page-2e7d6b)](https://markwell.page)
 [![CI](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml/badge.svg)](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/ceparadise168/markwell/total)](https://github.com/ceparadise168/markwell/releases)
 [![PyPI](https://img.shields.io/pypi/v/markwell)](https://pypi.org/project/markwell/)
