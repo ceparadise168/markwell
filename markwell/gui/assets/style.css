@@ -516,6 +516,46 @@ details.advanced summary { cursor: pointer; color: var(--ink-soft); font-weight:
 .hero .fmt-hint { font-size: .85rem; color: var(--ink-faint); max-width: none;
   margin: 8px 0 0; }
 
+/* ---- settings (cloud folder + pack-and-go) ----
+   Quiet panels in the History register. The radio rows reuse the .fmt-opt
+   rhythm; outcome boxes (.confirm-box / .settings-report) sit on the accent
+   wash like the ok banner — informational, never alarming. Paths can be long
+   and unbroken (iCloud's com~apple~CloudDocs), so every place one appears
+   inside prose is allowed to wrap anywhere. */
+.panel-title { font-size: 1.18rem; margin: 0 0 6px; }
+.panel-body { color: var(--ink-soft); margin: 0 0 18px; max-width: 62ch; }
+.dir-group { border: 0; padding: 0; margin: 0 0 18px; display: grid; gap: 4px; }
+.dir-opt { display: flex; gap: 11px; align-items: flex-start; padding: 10px;
+  border-radius: 10px; cursor: pointer; }
+.dir-opt:hover { background: var(--surface-2); }
+.dir-opt input { margin: 4px 0 0; flex: none; width: 16px; height: 16px;
+  accent-color: var(--accent); cursor: pointer; }
+.dir-opt-name { display: block; font-weight: 600; }
+.dir-opt-path { display: block; color: var(--ink-faint); font-size: .8rem;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  word-break: break-all; margin-top: 2px; }
+.custom-path { margin: 2px 0 6px 37px; }   /* 37px = radio 16 + gap 11 + pad 10 */
+.custom-path input {
+  width: 100%; font: inherit; color: var(--ink);
+  padding: 10px 12px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--surface);
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.custom-path input::placeholder { color: var(--ink-faint); }
+.custom-path input:focus-visible { border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent); outline: none; }
+.confirm-box { margin-top: 16px; padding: 16px 18px; border-radius: var(--r-sm);
+  background: var(--accent-soft); }
+.confirm-box p { margin: 0 0 14px; max-width: 64ch; overflow-wrap: anywhere; }
+.settings-report { margin-top: 16px; padding: 16px 18px; border-radius: var(--r-sm);
+  background: var(--accent-soft); }
+.settings-report p { margin: 0 0 8px; overflow-wrap: anywhere; }
+.settings-report .report-head { display: flex; align-items: center; gap: 8px; }
+.settings-report .report-head svg { width: 18px; height: 18px; flex: none; fill: none;
+  stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.settings-report .report-old { color: var(--ink-soft); font-size: .9rem; }
+.settings-report .btn-row { margin-top: 12px; }
+
 /* ---- review (one line a day) ----
    A single centered quote card in the reading serif. The pick is deterministic
    per local day (see app.js); the surface stays scoreless on purpose — no

@@ -224,6 +224,7 @@ const ICON = {
   refresh: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 1 0-.5 4M20 5v5h-5"/></svg>',
   clock: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>',
   share: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V4m0 0 5 5m-5-5-5 5M5 18v1a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1"/></svg>',
+  archive: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2.5" y="4" width="19" height="4.5" rx="1"/><path d="M4.5 8.5V18a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8.5M10 12.5h4"/></svg>',
 };
 
 let heartbeatTimer;
@@ -407,6 +408,7 @@ const routes = {
   book: renderBook,
   review: renderReview,
   history: renderHistory,
+  settings: renderSettings,
 };
 
 function parseHash() {
@@ -1389,6 +1391,7 @@ function relAge(stampIso) {
 }
 
 async function renderHistory() {
+  if (!localeRerender) { archiveUi.result = null; archiveUi.error = null; }
   await loadStatus();
   const s = state.status;
   const data = await api("/api/snapshots");
@@ -1410,7 +1413,9 @@ async function renderHistory() {
       <div class="path-row">
         <span class="path-chip">${esc(s.data_dir)}</span>
         <button class="btn" id="open-data">${ICON.folder}<span>${esc(t("history.open_folder"))}</span></button>
+        <button class="btn" id="archive-btn">${ICON.archive}<span>${esc(t("archive.cta"))}</span></button>
       </div>
+      <div id="archive-result" aria-live="polite"></div>
       ${fmtOptionsHTML()}
     </section>
 
@@ -1422,6 +1427,7 @@ async function renderHistory() {
 
   document.getElementById("open-data").onclick = () => openFolder("data");
   wireSnapActions();
+  wireArchive();
   wireFmt();
 }
 
@@ -1528,6 +1534,358 @@ function wireFmt() {
       toast(t("fmt.saved"));
     };
   });
+}
+
+/* ---------- view: Settings — where your files live + take-it-with-you ----------
+   The face of Markwell's no-account cloud story: the library is a normal
+   folder; keep that folder inside an already-syncing cloud folder (iCloud
+   Drive, Dropbox, Google Drive, OneDrive) and backup follows automatically —
+   no API, no sign-in. Relocation COPIES (the service never deletes user
+   data) and every line of copy says so.
+
+   All interaction state lives in settingsUi/archiveUi at module level so a
+   language switch mid-flow re-renders the SAME step in the new language; any
+   fresh navigation to the view starts clean (the localeRerender guard, same
+   convention as the review state). The backend's error messages are stable
+   English codes (see server.py); they are localized at paint time, so a
+   language switch re-translates an error already on screen. */
+const settingsUi = {
+  data: null,        // the /api/settings document this view rendered from
+  choice: null,      // selected option id: "home" | a cloud id | "custom"
+  customPath: "",    // the Advanced text input, exactly as typed
+  confirming: false, // the inline confirm step is on screen
+  busy: false,       // a relocation POST is in flight
+  report: null,      // success: {old, new, copied_snapshots, copied_outputs}
+  error: null,       // stable error message from the server (localize at paint)
+};
+const archiveUi = { result: null, error: null };  // shared: Settings + History
+
+/* Provider names in the reader's language (zh-TW says iCloud 雲端硬碟, the
+   Taiwan-official product name). Unknown ids fall back to the server's label
+   — never a blank row. Literal t() keys keep the i18n harvest test seeing
+   them. */
+function cloudOptionLabel(root) {
+  switch (root.id) {
+    case "icloud": return t("settings.cloud_icloud");
+    case "dropbox": return t("settings.cloud_dropbox");
+    case "gdrive": return t("settings.cloud_gdrive");
+    case "onedrive": return t("settings.cloud_onedrive");
+    default: return root.label || root.id;
+  }
+}
+
+/* Preview of where the library would land: <cloud root>/Markwell. Display
+   only — the real target is resolved server-side from the choice id. The
+   separator follows the root's own style so a Windows path previews as
+   C:\...\Markwell, not a mixed-slash hybrid. */
+function cloudTargetPreview(rootPath) {
+  const sep = rootPath.includes("\\") ? "\\" : "/";
+  return rootPath.replace(/[\\/]+$/, "") + sep + "Markwell";
+}
+
+/* The choice list the radios render: every detected cloud folder, then the
+   home default, then the Advanced custom row (target null — the input owns
+   the path). Rebuilt per paint so labels follow the active locale. */
+function settingsOptions(d) {
+  const opts = (d.cloud_roots || []).map((r) => ({
+    id: r.id,
+    label: cloudOptionLabel(r),
+    target: cloudTargetPreview(r.path),
+  }));
+  opts.push({ id: "home", label: t("settings.home_label"), target: d.home });
+  opts.push({ id: "custom", label: t("settings.custom_label"), target: null });
+  return opts;
+}
+
+/* The server's stable settings/archive error messages → the reader's
+   language (same shape as errorMessage for export jobs). Unmapped messages
+   (pathological input can surface raw OS text like "embedded null byte")
+   fall back the way errorMessage's "unexpected" case does: the localized
+   generic line with the raw detail appended — never a blank box, never
+   bare English standing in for a translation. */
+function settingsErrorMessage(raw) {
+  switch (raw) {
+    case "unknown choice": return t("settings.err_unknown_choice");
+    case "path required": return t("settings.err_path_required");
+    case "path must be absolute": return t("settings.err_path_absolute");
+    case "path is a file": return t("settings.err_path_file");
+    case "path is inside the Kobo device": return t("settings.err_path_device");
+    case "path is not writable": return t("settings.err_not_writable");
+    case "export running": return t("settings.err_running");
+    case "nothing to archive": return t("archive.err_empty");
+    default: return t("error.unexpected", { detail: String(raw || "") });
+  }
+}
+
+/* The path the chosen option points at, for the confirm sentence and the
+   "is this different from the current folder?" gate. Custom shows the path
+   as typed — the server resolves and validates the real thing. */
+function chosenTargetText() {
+  if (settingsUi.choice === "custom") return settingsUi.customPath.trim();
+  const o = settingsOptions(settingsUi.data)
+    .find((x) => x.id === settingsUi.choice);
+  return o ? o.target : "";
+}
+
+async function renderSettings() {
+  // a fresh visit starts clean; a locale re-render repaints the same step
+  if (!localeRerender) {
+    settingsUi.choice = null;
+    settingsUi.customPath = "";
+    settingsUi.confirming = false;
+    settingsUi.busy = false;
+    settingsUi.report = null;
+    settingsUi.error = null;
+    archiveUi.result = null;
+    archiveUi.error = null;
+  }
+  await loadStatus();
+  const d = await api("/api/settings");
+  settingsUi.data = d;
+  if (settingsUi.choice === null) {
+    const cur = settingsOptions(d).find((o) => o.target === d.data_dir);
+    settingsUi.choice = cur ? cur.id : null;
+  }
+
+  view.innerHTML = `<div class="wrap">
+    <h1 class="page-title">${esc(t("nav.settings"))}</h1>
+    <p class="page-sub">${esc(t("settings.intro"))}</p>
+
+    <section class="panel">
+      <p class="eyebrow">${esc(t("settings.folder_title"))}</p>
+      <div class="path-row">
+        <span class="path-chip" id="cur-dir">${esc(d.data_dir)}</span>
+        <button class="btn" id="open-cur">${ICON.folder}<span>${esc(t("history.open_folder"))}</span></button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title">${esc(t("settings.cloud_title"))}</h2>
+      <p class="panel-body">${esc(t("settings.cloud_body"))}</p>
+      <fieldset class="dir-group" id="dir-options"></fieldset>
+      <button class="btn btn-primary" id="move-cta">${ICON.folder}<span>${esc(t("settings.move_cta"))}</span></button>
+      <div id="move-confirm"></div>
+      <div id="move-result" aria-live="polite"></div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title">${esc(t("settings.archive_title"))}</h2>
+      <p class="panel-body">${esc(t("settings.archive_body"))}</p>
+      <button class="btn" id="archive-btn">${ICON.archive}<span>${esc(t("archive.cta"))}</span></button>
+      <div id="archive-result" aria-live="polite"></div>
+    </section>
+  </div>`;
+
+  document.getElementById("open-cur").onclick = () => openFolder("data");
+  document.getElementById("move-cta").onclick = () => {
+    settingsUi.confirming = true;
+    settingsUi.report = null;
+    settingsUi.error = null;
+    paintMoveResult(false);
+    paintConfirm(true);     // user-driven reveal: focus lands on Confirm
+  };
+  paintDirOptions();
+  paintConfirm(false);
+  paintMoveResult(false);
+  wireArchive();
+}
+
+/* (Re)fill the radio list from state: detected clouds (label + resulting
+   path, small) → home → Advanced custom (its text input lives just below and
+   shows only while custom is selected). The option already in use wears a
+   "current" pill; the primary button stays disabled until the choice would
+   actually change something. */
+function paintDirOptions() {
+  const d = settingsUi.data;
+  const box = document.getElementById("dir-options");
+  if (!box || !d) return;
+  const rows = settingsOptions(d).map((o) => {
+    const current = o.target !== null && o.target === d.data_dir;
+    const path = o.target === null ? ""
+      : `<span class="dir-opt-path">${esc(o.target)}</span>`;
+    return `<label class="dir-opt">
+      <input type="radio" name="dir-choice" value="${esc(o.id)}"${settingsUi.choice === o.id ? " checked" : ""}>
+      <span class="dir-opt-text">
+        <span class="dir-opt-name">${esc(o.label)}${current ? ` <span class="pill">${esc(t("settings.current_pill"))}</span>` : ""}</span>
+        ${path}
+      </span>
+    </label>`;
+  }).join("");
+  box.innerHTML = `<legend class="sr-only">${esc(t("settings.choice_legend"))}</legend>`
+    + rows
+    + `<div class="custom-path" id="custom-wrap"${settingsUi.choice === "custom" ? "" : " hidden"}>
+      <input type="text" id="custom-path" value="${esc(settingsUi.customPath)}"
+             placeholder="${esc(t("settings.custom_placeholder"))}"
+             aria-label="${esc(t("settings.custom_aria"))}"
+             spellcheck="false" autocomplete="off">
+    </div>`;
+  box.querySelectorAll('input[type="radio"]').forEach((r) => {
+    r.onchange = () => {
+      settingsUi.choice = r.value;
+      // a new choice retires the previous attempt's confirm step and outcome
+      settingsUi.confirming = false;
+      settingsUi.report = null;
+      settingsUi.error = null;
+      const wrap = document.getElementById("custom-wrap");
+      if (wrap) wrap.hidden = settingsUi.choice !== "custom";
+      if (settingsUi.choice === "custom") {
+        const inp = document.getElementById("custom-path");
+        if (inp) inp.focus();
+      }
+      paintConfirm(false);
+      paintMoveResult(false);
+      updateMoveCta();
+    };
+  });
+  const inp = document.getElementById("custom-path");
+  if (inp) inp.oninput = () => {
+    settingsUi.customPath = inp.value;
+    // editing the path invalidates a confirm sentence already on screen
+    if (settingsUi.confirming) { settingsUi.confirming = false; paintConfirm(false); }
+    updateMoveCta();
+  };
+  updateMoveCta();
+}
+
+function updateMoveCta() {
+  const btn = document.getElementById("move-cta");
+  if (!btn || !settingsUi.data) return;
+  let ok = !!settingsUi.choice && !settingsUi.busy;
+  if (ok) {
+    const target = chosenTargetText();
+    ok = !!target && target !== settingsUi.data.data_dir;
+  }
+  btn.disabled = !ok;
+}
+
+/* The inline confirm step (no native confirm(), no modal): one sentence that
+   says exactly what will happen — copy to the new folder, delete nothing,
+   the old folder stays put — then Copy / Cancel. Focus moves onto Confirm
+   when the step is revealed by a click; Esc cancels and returns focus to the
+   primary button. While the POST runs the step repaints as a disabled
+   "Copying…" state (so a language switch mid-copy stays truthful). */
+function paintConfirm(focus) {
+  const box = document.getElementById("move-confirm");
+  if (!box) return;
+  if (!settingsUi.confirming) { box.innerHTML = ""; return; }
+  const goLabel = settingsUi.busy ? t("settings.copying") : t("settings.confirm_go");
+  const goMark = settingsUi.busy ? '<span class="spinner"></span>' : ICON.copy;
+  box.innerHTML = `<div class="confirm-box" id="confirm-box">
+    <p id="confirm-text">${esc(t("settings.confirm_body", {
+      new: chosenTargetText(), old: settingsUi.data.data_dir }))}</p>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="confirm-go" aria-describedby="confirm-text"${settingsUi.busy ? " disabled" : ""}>${goMark}<span>${esc(goLabel)}</span></button>
+      <button class="btn" id="confirm-cancel"${settingsUi.busy ? " disabled" : ""}>${esc(t("settings.confirm_cancel"))}</button>
+    </div>
+  </div>`;
+  document.getElementById("confirm-go").onclick = submitRelocation;
+  document.getElementById("confirm-cancel").onclick = cancelConfirm;
+  document.getElementById("confirm-box").addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !settingsUi.busy) { e.stopPropagation(); cancelConfirm(); }
+  });
+  if (focus) document.getElementById("confirm-go").focus();
+}
+
+function cancelConfirm() {
+  settingsUi.confirming = false;
+  paintConfirm(false);
+  const cta = document.getElementById("move-cta");
+  if (cta) cta.focus();   // don't strand keyboard focus with the buttons gone
+}
+
+async function submitRelocation() {
+  const body = settingsUi.choice === "custom"
+    ? { choice: "custom", path: settingsUi.customPath.trim() }
+    : { choice: settingsUi.choice };
+  settingsUi.busy = true;
+  paintConfirm(false);    // repaint as the disabled "Copying…" state
+  updateMoveCta();
+  try {
+    const r = await api("/api/settings/data-dir", { method: "POST", body });
+    settingsUi.report = r;
+    settingsUi.error = null;
+    // keep the cached doc truthful so every later repaint shows the new home
+    settingsUi.data.data_dir = r.new;
+    const chip = document.getElementById("cur-dir");
+    if (chip) chip.textContent = r.new;
+  } catch (err) {
+    settingsUi.error = err.message;   // a stable code; localized at paint
+    settingsUi.report = null;
+  }
+  settingsUi.busy = false;
+  settingsUi.confirming = false;
+  paintConfirm(false);
+  paintDirOptions();      // the "current" pill + disabled CTA follow the move
+  paintMoveResult(true);
+}
+
+/* Outcome of the relocation, filled in place so the aria-live region
+   announces it. Success keeps the no-loss promise on screen: what was
+   copied, where the old files still live, and a way to see the new folder. */
+function paintMoveResult(focus) {
+  const box = document.getElementById("move-result");
+  if (!box) return;
+  if (settingsUi.error) {
+    box.innerHTML = `<div class="inline-msg err" tabindex="-1">${esc(settingsErrorMessage(settingsUi.error))}</div>`;
+    if (focus) box.firstElementChild.focus();
+  } else if (settingsUi.report) {
+    const r = settingsUi.report;
+    const snaps = nphrase("settings.copied_snaps_one", "settings.copied_snaps_many", r.copied_snapshots);
+    const files = nphrase("settings.copied_files_one", "settings.copied_files_many", r.copied_outputs);
+    box.innerHTML = `<div class="settings-report" tabindex="-1">
+      <p class="report-head">${ICON.check}<b>${esc(t("settings.report_title"))}</b></p>
+      <p>${esc(t("settings.report_body", { snaps, files }))}</p>
+      <p class="report-old">${esc(t("settings.report_old", { path: r.old }))}</p>
+      <div class="btn-row"><button class="btn" id="open-new">${ICON.folder}<span>${esc(t("settings.open_new"))}</span></button></div>
+    </div>`;
+    document.getElementById("open-new").onclick = () => openFolder("data");
+    if (focus) box.firstElementChild.focus();
+  } else {
+    box.innerHTML = "";
+  }
+}
+
+/* ---------- pack-and-go archive (Settings + History share this wiring) ----------
+   One button → POST /api/archive → the zip's name + an Open-folder button,
+   or a friendly localized error ("nothing to archive" included). Outcome
+   lives in archiveUi so a language switch repaints it; the result container
+   (#archive-result, aria-live=polite) is filled in place so it announces. */
+function wireArchive() {
+  const btn = document.getElementById("archive-btn");
+  if (!btn) return;
+  btn.onclick = async () => {
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span><span>${esc(t("archive.working"))}</span>`;
+    archiveUi.result = null;
+    archiveUi.error = null;
+    paintArchiveResult();   // clear the previous outcome while we pack
+    try {
+      archiveUi.result = await api("/api/archive", { method: "POST" });
+    } catch (err) {
+      archiveUi.error = err.message;
+    }
+    btn.disabled = false;
+    btn.innerHTML = orig;
+    paintArchiveResult();
+  };
+  paintArchiveResult();     // restore an outcome across a locale re-render
+}
+
+function paintArchiveResult() {
+  const box = document.getElementById("archive-result");
+  if (!box) return;
+  if (archiveUi.error) {
+    box.innerHTML = `<div class="inline-msg err">${esc(settingsErrorMessage(archiveUi.error))}</div>`;
+  } else if (archiveUi.result) {
+    box.innerHTML = `<div class="settings-report">
+      <p class="report-head">${ICON.check}<b>${esc(t("archive.done", { name: archiveUi.result.name }))}</b></p>
+      <div class="btn-row"><button class="btn" id="archive-open">${ICON.folder}<span>${esc(t("result.open_folder"))}</span></button></div>
+    </div>`;
+    document.getElementById("archive-open").onclick = () => openFolder("data");
+  } else {
+    box.innerHTML = "";
+  }
 }
 
 /* ---------- empty / sample / error ----------
