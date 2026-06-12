@@ -47,8 +47,44 @@ def test_every_t_key_used_in_js_exists_in_en():
     for name in ("app.js", "i18n.js"):
         src = (ASSETS / name).read_text(encoding="utf-8")
         used |= set(re.findall(r"""(?<![\w.])t\(\s*["']([\w.-]+)["']""", src))
+        # nphrase("x_one", "x_many", n) picks its key at runtime — harvest both
+        for one, many in re.findall(
+                r"""nphrase\(\s*["']([\w.-]+)["'],\s*["']([\w.-]+)["']""", src):
+            used |= {one, many}
     missing = used - set(d["en"])
     assert not missing, f"t() keys missing from en dict: {missing}"
+
+
+# ---- the full-app sweep (Task 5) ----------------------------------------------
+
+def test_app_js_localizes_at_volume():
+    """Floor on t() call sites: app.js renders through the dictionary, not
+    hardcoded English. A big drop means someone re-inlined strings."""
+    src = (ASSETS / "app.js").read_text(encoding="utf-8")
+    calls = re.findall(r"(?<![\w.])t\(", src)
+    assert len(calls) >= 60, f"only {len(calls)} t() call sites in app.js"
+
+
+# Exact English literals the Task-5 sweep removed from app.js (one per major
+# surface: library, progress phases, device banner, search, CTA, book detail,
+# history, copy toast). Any reappearance = a hardcoded string snuck back in.
+_ENGLISH_SENTINELS = [
+    "Your library",
+    "Finding your Kobo",
+    "No Kobo detected",
+    "Search your highlights",
+    "Back up my Kobo",
+    "All books",
+    "Saved copies",
+    "Highlight copied.",
+    "Re-create files",
+]
+
+
+def test_no_hardcoded_english_sentinels_in_app_js():
+    src = (ASSETS / "app.js").read_text(encoding="utf-8")
+    leaked = [s for s in _ENGLISH_SENTINELS if s in src]
+    assert not leaked, f"hardcoded English back in app.js: {leaked}"
 
 
 def test_every_data_i18n_key_in_index_html_exists_in_en():

@@ -39,6 +39,53 @@ function toast(msg) {
   toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2600);
 }
 
+/* ---------- i18n composition helpers ----------
+   t() / currentLocale() come from i18n.js (loaded first). The XSS contract for
+   every translated string (SECURITY.md): t() output is NOT escaped, so any
+   insertion into innerHTML wraps the WHOLE composed string — params included,
+   because params can carry book text or search terms — in esc(); only
+   textContent / setAttribute sinks may take t() raw. */
+
+// Display numbers in the reader's chosen UI locale (not the browser default).
+function fmtNum(n) {
+  return Number(n || 0).toLocaleString(currentLocale());
+}
+
+/* Count phrase via a _one/_many key pair (same convention as labels.py): CJK
+   locales repeat one value, English splits. Both keys arrive as literals so the
+   test suite can hold them against the dictionary. `params` adds placeholders
+   beyond {n}. */
+function nphrase(oneKey, manyKey, n, params) {
+  return t(n === 1 ? oneKey : manyKey,
+    Object.assign({ n: fmtNum(n) }, params));
+}
+
+/* Export-job error codes → the reader's language. `ctx` ("device" | "copy")
+   disambiguates schema/unreadable, whose backend wording differs by what was
+   being read; the job dict carries no use_device flag, but every call site
+   knows its own flow (the Backup view reads the device, History re-creates
+   from a saved copy). Unknown codes fall back to the job's English message —
+   never a blank box. */
+function errorMessage(job, ctx) {
+  switch (job.error) {
+    case "no_device": return t("error.no_device");
+    case "no_source": return t("error.no_source");
+    case "empty": return t("error.empty");
+    case "schema":
+      return ctx === "copy" ? t("error.schema_copy") : t("error.schema_device");
+    case "unreadable":
+      return ctx === "copy" ? t("error.unreadable_copy") : t("error.unreadable_device");
+    case "unexpected":
+      // the backend message embeds the exception after its fixed English
+      // prefix; strip it so the localized prefix isn't doubled
+      return t("error.unexpected", {
+        detail: String(job.message || "").replace(/^Something unexpected went wrong: /, ""),
+      });
+    default:
+      return job.message || t("error.unexpected", { detail: String(job.error || "") });
+  }
+}
+
 /* ---------- motion preference (used everywhere animation is JS-driven) ----------
    The CSS @media (prefers-reduced-motion) block kills CSS transitions/animations,
    but it can NOT stop element.animate() or JS-set style.opacity / smooth scroll.
@@ -160,10 +207,9 @@ window.addEventListener("scroll", updateScrollFx, { passive: true });
 async function openFolder(dir) {
   try {
     const d = await api("/api/open", { method: "POST", body: { dir } });
-    toast(d && d.ok ? "Opened your folder."
-      : "Couldn't open the folder — you can find it in History.");
+    toast(d && d.ok ? t("toast.opened_folder") : t("toast.open_folder_failed"));
   } catch (_) {
-    toast("Couldn't open the folder — you can find it in History.");
+    toast(t("toast.open_folder_failed"));
   }
 }
 
@@ -192,15 +238,15 @@ async function quitApp() {
   clearInterval(heartbeatTimer);
   try {
     await api("/api/quit", { method: "POST" });
-    toast("Markwell is quitting.");
+    toast(t("quit.confirm"));
     view.innerHTML = `<div class="wrap"><div class="empty">
-      <h2>Markwell has quit</h2>
-      <p>You can close this browser tab.</p>
+      <h2>${esc(t("quit.done_title"))}</h2>
+      <p>${esc(t("quit.done_body"))}</p>
     </div></div>`;
   } catch (_) {
     if (btn) btn.disabled = false;
     heartbeatTimer = setInterval(sendHeartbeat, 15000);
-    toast("Could not quit Markwell from here.");
+    toast(t("quit.failed"));
   }
 }
 
@@ -242,6 +288,7 @@ function switchSource(src) {
 }
 
 function announceSearch(text) {
+  if (localeRerender) return;   // language flip re-renders, but nothing changed
   clearTimeout(srSearchTimer);
   srSearchTimer = setTimeout(() => {
     const el = document.getElementById("search-sr");
@@ -340,8 +387,9 @@ async function route(focusMain) {
   setScrollContext({ progress: false, fab: false });
   window.scrollTo({ top: 0, behavior: "auto" });
   setNav(name === "book" ? "library" : name);
+  lastViewHash = "#/" + name + (arg !== undefined ? "/" + arg : "");
   const fn = routes[name];
-  view.innerHTML = '<div class="wrap"><div class="route-load" role="status" aria-label="Loading…"><span class="spinner" aria-hidden="true"></span></div></div>';
+  view.innerHTML = `<div class="wrap"><div class="route-load" role="status" aria-label="${esc(t("chrome.loading"))}"><span class="spinner" aria-hidden="true"></span></div></div>`;
   try {
     await fn(arg);
   } catch (err) {
@@ -356,15 +404,37 @@ async function route(focusMain) {
 
 window.addEventListener("hashchange", () => route(true));
 
+/* ---------- live re-render on language switch ----------
+   setLocale() (i18n.js) re-labels the static chrome itself and then dispatches
+   this event; the view body re-renders by re-running the router. Kept
+   non-destructive: focus stays where it is (route(false)), the scroll position
+   is restored once the view is back, the hero keeps its current line, and live
+   regions stay silent — the content didn't change, only its language. */
+let lastViewHash = "";     // canonical hash of the last real view route rendered
+let localeRerender = false;
+
+document.addEventListener("markwell:locale", async () => {
+  // A non-route fragment (the #view skip-link) would make route() a no-op and
+  // strand the body in the old language; restore the last real view's hash
+  // first (replaceState fires no hashchange, so this can't loop).
+  if (!Object.prototype.hasOwnProperty.call(routes, parseHash()[0]) && lastViewHash) {
+    history.replaceState(null, "", lastViewHash);
+  }
+  const sx = window.scrollX, sy = window.scrollY;
+  localeRerender = true;
+  try { await route(false); } finally { localeRerender = false; }
+  window.scrollTo({ top: sy, left: sx, behavior: "auto" });
+});
+
 /* ---------- view: Back up ---------- */
 function deviceBanner(s) {
   if (s.device_connected) {
     return `<div class="banner ok"><span class="dot"></span>
-      <span><b>Kobo connected.</b> Ready to back up.</span></div>`;
+      <span><b>${esc(t("backup.device_ok_title"))}</b> ${esc(t("backup.device_ok_body"))}</span></div>`;
   }
   return `<div class="banner warn"><span class="dot"></span>
-    <span><b>No Kobo detected.</b> Plug it in with the USB cable and unlock it.</span>
-    <button class="btn banner-act" id="retry">Check again</button></div>`;
+    <span><b>${esc(t("backup.device_warn_title"))}</b> ${esc(t("backup.device_warn_body"))}</span>
+    <button class="btn banner-act" id="retry">${esc(t("backup.check_again"))}</button></div>`;
 }
 
 async function renderBackup() {
@@ -373,19 +443,17 @@ async function renderBackup() {
   const job = await api("/api/export/status");
 
   const lastLine = s.has_library
-    ? `<p class="hero-last">Your latest saved copy is ready to read in your Library.</p>`
+    ? `<p class="hero-last">${esc(t("backup.latest_ready"))}</p>`
     : "";
 
   view.innerHTML = `<div class="wrap">
     ${deviceBanner(s)}
     <section class="panel hero">
-      <h1>Back up your Kobo</h1>
-      <p>Save a copy of everything you've highlighted, and turn it into pages you
-         can read and keep — forever, on your own computer.</p>
+      <h1>${esc(t("backup.heading"))}</h1>
+      <p>${esc(t("backup.intro"))}</p>
       <button class="btn btn-primary btn-lg" id="backup-btn">
-        ${ICON.down}<span>Back up my Kobo</span></button>
-      <p class="hero-note">Markwell only reads your Kobo — it never changes anything
-         on it. Nothing ever leaves your computer.</p>
+        ${ICON.down}<span>${esc(t("backup.cta"))}</span></button>
+      <p class="hero-note">${esc(t("backup.reassure"))}</p>
       <p id="sr-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
       <div id="progress"></div>
       ${lastLine}
@@ -415,12 +483,16 @@ async function startBackup() {
   }
 }
 
-const PHASES = [
-  ["detecting", "Finding your Kobo"],
-  ["snapshotting", "Saving a safe copy"],
-  ["reading", "Reading your highlights"],
-  ["rendering", "Preparing your files"],
-];
+/* Step labels resolve at render time so a language switch mid-backup repaints
+   them; the codes are the backend's stable phase identifiers. */
+function phaseList() {
+  return [
+    ["detecting", t("phase.detecting")],
+    ["snapshotting", t("phase.snapshotting")],
+    ["reading", t("phase.reading")],
+    ["rendering", t("phase.rendering")],
+  ];
+}
 
 async function pollExport(gen) {
   if (gen === undefined) gen = pollGen;
@@ -455,8 +527,11 @@ function renderProgress(job) {
   if (banner) banner.style.display = busy ? "none" : "";
 
   if (job.state === "error") {
-    box.innerHTML = `<div class="inline-msg err" tabindex="-1">${esc(job.message)}</div>`;
-    if (sr) sr.textContent = job.message;
+    // device context: this progress box only ever shows the Backup view's own
+    // flow (History's re-create reports through its toast instead)
+    const msg = errorMessage(job, "device");
+    box.innerHTML = `<div class="inline-msg err" tabindex="-1">${esc(msg)}</div>`;
+    if (sr) sr.textContent = msg;
     const el = box.querySelector(".inline-msg.err");
     if (el) el.focus();
     return;
@@ -464,34 +539,35 @@ function renderProgress(job) {
 
   if (job.state === "done" && job.result) {
     const r = job.result;
-    const books = `${r.books} book${r.books === 1 ? "" : "s"}`;
+    const books = nphrase("count.books_one", "count.books_many", r.books);
     box.innerHTML = `<div class="result" tabindex="-1">
       <div class="success-mark">${ICON.check}</div>
-      <div class="big">${r.highlights.toLocaleString()}</div>
-      <div class="big-sub">highlights &amp; notes saved from ${books}</div>
+      <div class="big">${fmtNum(r.highlights)}</div>
+      <div class="big-sub">${esc(t("result.saved_from", { books }))}</div>
       <div class="btn-row center">
-        <a class="btn btn-primary" href="#/library">${ICON.book}<span>Read them</span></a>
-        <button class="btn" id="open-out">${ICON.folder}<span>Open the folder</span></button>
+        <a class="btn btn-primary" href="#/library">${ICON.book}<span>${esc(t("result.read_them"))}</span></a>
+        <button class="btn" id="open-out">${ICON.folder}<span>${esc(t("result.open_folder"))}</span></button>
       </div></div>`;
     document.getElementById("open-out").onclick = () => openFolder("output");
-    if (sr) sr.textContent = `Done. ${r.highlights} highlights and notes saved from ${books}.`;
+    if (sr) sr.textContent = t("result.sr_done", { highlights: r.highlights, books });
     const res = box.querySelector(".result");
     if (res) res.focus();
     return;
   }
 
   // running — announce only on phase change, so the 500ms poll doesn't repeat
-  const activeIdx = PHASES.findIndex((p) => p[0] === job.phase);
+  const phases = phaseList();
+  const activeIdx = phases.findIndex((p) => p[0] === job.phase);
   if (sr && activeIdx >= 0 && job.phase !== srPhase) {
     srPhase = job.phase;
-    sr.textContent = PHASES[activeIdx][1] + "…";
+    sr.textContent = phases[activeIdx][1] + "…";
   }
-  box.innerHTML = `<ul class="steps" aria-hidden="true">` + PHASES.map((p, i) => {
+  box.innerHTML = `<ul class="steps" aria-hidden="true">` + phases.map((p, i) => {
     const cls = i < activeIdx ? "done" : i === activeIdx ? "active" : "";
     const mark = i < activeIdx ? `<span class="tick">${ICON.check}</span>`
       : i === activeIdx ? `<span class="spinner"></span>`
       : `<span class="tick"></span>`;
-    return `<li class="${cls}">${mark}<span>${p[1]}</span></li>`;
+    return `<li class="${cls}">${mark}<span>${esc(p[1])}</span></li>`;
   }).join("") + `</ul>`;
 }
 
@@ -539,7 +615,7 @@ function markEmphasis(text) {
 
 function heroMetaInner(h) {
   return `<button class="hero-book" type="button" data-bookidx="${h.bookIdx}" data-hlidx="${h.hlIdx}"
-            aria-label="Open ${esc(h.bookTitle)} at this highlight">${esc(h.bookTitle)}</button>${
+            aria-label="${esc(t("library.open_book_aria", { title: h.bookTitle }))}">${esc(h.bookTitle)}</button>${
     h.date ? `<span class="hero-sep" aria-hidden="true"></span><span class="hero-date">${esc(h.date)}</span>` : ""}`;
 }
 
@@ -548,16 +624,16 @@ function heroHTML(h) {
   // carries NO aria-label — its accessible name is computed from the quote, and a
   // screen-reader user hears the line (not a generic action label). aria-describedby
   // adds the "press to show another" affordance without masking the quote, and keeps
-  // it distinct from the reshuffle control (which owns the "Show another" label).
+  // it distinct from the reshuffle control (which owns its own action label).
   return `<div class="hero-line reveal" id="hero">
-    <p class="hero-eyebrow">From your highlights · a line to revisit</p>
+    <p class="hero-eyebrow">${esc(t("hero.eyebrow"))}</p>
     <button class="hero-quote" id="hero-quote" type="button" aria-describedby="hero-hint">
       <span class="hero-q">${markEmphasis(h.text)}</span>
     </button>
-    <span id="hero-hint" class="sr-only">Press to show another highlight.</span>
+    <span id="hero-hint" class="sr-only">${esc(t("hero.hint"))}</span>
     <div class="hero-meta">${heroMetaInner(h)}</div>
-    <button class="reshuffle" id="reshuffle" type="button" aria-label="Show another highlight">
-      ${ICON.refresh}<span>Another line</span>
+    <button class="reshuffle" id="reshuffle" type="button" aria-label="${esc(t("hero.reshuffle_aria"))}">
+      ${ICON.refresh}<span>${esc(t("hero.reshuffle"))}</span>
     </button>
     <span id="hero-sr" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
   </div>`;
@@ -602,7 +678,10 @@ function maybeRenderHero() {
   if (!slot) return;
   // shown only when there's no active query AND there is at least one highlight
   if (state.q.trim() || !(state.flat && state.flat.length)) { slot.innerHTML = ""; return; }
-  const h = pickHero(heroPool(state.flat));
+  // a language switch repaints the hero but keeps the line being read
+  const pool = heroPool(state.flat);
+  const h = (localeRerender && _heroCur && pool.indexOf(_heroCur) >= 0)
+    ? _heroCur : pickHero(pool);
   if (!h) { slot.innerHTML = ""; return; }
   slot.innerHTML = heroHTML(h);
   wireHero();
@@ -620,7 +699,7 @@ function searchTerms(q) {
   return q.toLowerCase().split(/\s+/).filter(Boolean);
 }
 function highlightMatches(flat, terms) {
-  return (flat || []).filter((h) => terms.every((t) => h.hay.includes(t)));
+  return (flat || []).filter((h) => terms.every((term) => h.hay.includes(term)));
 }
 /* Find term matches on the RAW (unescaped) text, then emit esc(segment) around
    <mark>esc(match)</mark>. Matching on the raw string avoids corrupting HTML
@@ -629,7 +708,7 @@ function highlightMatches(flat, terms) {
    content passes through esc(); the only literal HTML is the <mark> we control. */
 function markTerms(text, terms) {
   const src = String(text == null ? "" : text);
-  const parts = terms.map((t) => t && t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).filter(Boolean);
+  const parts = terms.map((term) => term && term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).filter(Boolean);
   if (!parts.length) return esc(src);
   const re = new RegExp("(" + parts.join("|") + ")", "gi");
   let out = "", last = 0, m;
@@ -651,12 +730,11 @@ function renderSearchResults(q) {
 
   if (!hits.length) {
     results.innerHTML = `<div class="empty results-empty" tabindex="-1">
-      <p class="big">No highlights match “${esc(q)}”.</p>
-      <p>Try a different word, or clear the search to return to your books.
-         Markwell searches the words inside your highlights and notes — not book titles.</p>
+      <p class="big">${esc(t("search.no_match", { q }))}</p>
+      <p>${esc(t("search.no_match_hint"))}</p>
     </div>`;
     if (count) count.textContent = "";
-    announceSearch(`No highlights match ${q}.`);
+    announceSearch(t("search.sr_no_match", { q }));
     return;
   }
 
@@ -665,12 +743,12 @@ function renderSearchResults(q) {
     // surface the note line only when the match was actually in the note, so a
     // searcher who remembers a word from their own annotation can see why this
     // row matched (the empty-state copy promises Markwell searches notes too).
-    const noteHit = h.note && terms.some((t) => h.note.toLowerCase().includes(t));
+    const noteHit = h.note && terms.some((term) => h.note.toLowerCase().includes(term));
     const note = noteHit
-      ? `<div class="rnote"><b>Your note:</b> ${markTerms(h.note, terms)}</div>` : "";
+      ? `<div class="rnote"><b>${esc(t("book.note_label"))}</b> ${markTerms(h.note, terms)}</div>` : "";
     return `
     <button class="search-result" type="button" data-bookidx="${h.bookIdx}" data-hlidx="${h.hlIdx}"
-            aria-label="Open ${esc(h.bookTitle)} at this highlight">
+            aria-label="${esc(t("library.open_book_aria", { title: h.bookTitle }))}">
       <div class="rtext">${markTerms(h.text, terms)}</div>${note}
       <div class="rmeta"><span class="rb">${esc(h.bookTitle)}</span>${
         h.date ? `<span class="sep" aria-hidden="true"></span><span>${esc(h.date)}</span>` : ""}</div>
@@ -678,13 +756,13 @@ function renderSearchResults(q) {
   }).join("");
 
   const more = hits.length > SEARCH_CAP
-    ? `<p class="results-more">Showing the first ${SEARCH_CAP} of ${hits.length.toLocaleString()} matches — type a more specific word to narrow them.</p>`
+    ? `<p class="results-more">${esc(t("search.more", { cap: SEARCH_CAP, total: fmtNum(hits.length) }))}</p>`
     : "";
 
   results.innerHTML = rows + more;
   if (count) count.textContent =
-    `${hits.length.toLocaleString()} highlight${hits.length === 1 ? "" : "s"} match`;
-  announceSearch(`${hits.length} highlight${hits.length === 1 ? "" : "s"} match ${q}.`);
+    nphrase("search.count_one", "search.count_many", hits.length);
+  announceSearch(nphrase("search.sr_match_one", "search.sr_match_many", hits.length, { q }));
 
   results.querySelectorAll(".search-result").forEach((el) => {
     el.onclick = () => jumpToHighlight(Number(el.dataset.bookidx), Number(el.dataset.hlidx));
@@ -708,13 +786,15 @@ async function renderLibrary() {
   view.innerHTML = `<div class="wrap">
     ${lib.source_kind === "sample" ? sampleBanner() : ""}
     <div id="hero-slot"></div>
-    <h1 class="page-title">Your library</h1>
-    <p class="page-sub">${books.length} book${books.length === 1 ? "" : "s"} ·
-       ${totalHl.toLocaleString()} highlights &amp; notes</p>
+    <h1 class="page-title">${esc(t("library.heading"))}</h1>
+    <p class="page-sub">${esc(t("library.counts", {
+      books: nphrase("count.books_one", "count.books_many", books.length),
+      n: fmtNum(totalHl),
+    }))}</p>
     <div class="toolbar">
       <div class="search">${ICON.search}
-        <input type="search" id="q" placeholder="Search your highlights…"
-               aria-label="Search your highlights" value="${esc(state.q)}">
+        <input type="search" id="q" placeholder="${esc(t("library.search_placeholder"))}"
+               aria-label="${esc(t("library.search_aria"))}" value="${esc(state.q)}">
       </div>
       <span class="count-note" id="count"></span>
     </div>
@@ -786,7 +866,7 @@ function bookCard(b) {
     <div class="bc-title">${esc(b.title)}</div>
     ${b.author ? `<div class="bc-author">${esc(b.author)}</div>` : ""}
     <div class="bc-meta"><span class="bc-count">${n}</span>
-      <span>highlight${n === 1 ? "" : "s"}</span>${span ? `<span>· ${esc(span)}</span>` : ""}</div>
+      <span>${esc(nphrase("library.card_highlights_one", "library.card_highlights_many", n))}</span>${span ? `<span>· ${esc(span)}</span>` : ""}</div>
   </button>`;
 }
 
@@ -818,38 +898,35 @@ async function renderBook(arg) {
   book.highlights.forEach((h, hlIdx) => {
     if (h.chapter_index !== lastChap) {
       if (open) body += "</ul>";
-      body += `<h2 class="chapter">Chapter ${esc(h.chapter_index)}</h2><ul class="hl-list">`;
+      body += `<h2 class="chapter">${esc(t("book.chapter", { n: h.chapter_index }))}</h2><ul class="hl-list">`;
       open = true;
       lastChap = h.chapter_index;
     }
-    const note = h.note ? `<div class="note"><b>Your note:</b> ${esc(h.note)}</div>` : "";
+    const note = h.note ? `<div class="note"><b>${esc(t("book.note_label"))}</b> ${esc(h.note)}</div>` : "";
     const date = h.date ? `<span class="date">${esc(h.date)}</span>` : "";
     body += `<li class="hl reveal" id="hl-${bookIdx}-${hlIdx}">
       <div class="text">${esc(h.text)}</div>${note}
       <div class="hl-foot">
         ${date}
-        <button class="copy" type="button" aria-label="Copy this highlight" data-hlidx="${hlIdx}">${ICON.copy}<span>Copy</span></button>
+        <button class="copy" type="button" aria-label="${esc(t("book.copy_aria"))}" data-hlidx="${hlIdx}">${ICON.copy}<span>${esc(t("book.copy"))}</span></button>
       </div>
     </li>`;
   });
   if (open) body += "</ul>";
 
   // a warm close: an ornament, a count, and a way back to the shelf
-  const endMsg = n === 1
-    ? "That's the only highlight from this book."
-    : `That's every highlight from this book — ${n} in all.`;
   const endBlock = `<div class="book-end">
     <div class="orn" aria-hidden="true">❊ ❊ ❊</div>
-    <p class="be-msg">${endMsg}</p>
-    <a class="btn" href="#/library">${ICON.back}<span>Back to your library</span></a>
+    <p class="be-msg">${esc(nphrase("book.end_one", "book.end_many", n))}</p>
+    <a class="btn" href="#/library">${ICON.back}<span>${esc(t("book.back_to_library"))}</span></a>
   </div>`;
 
   view.innerHTML = `<div class="wrap">
-    <a class="back" href="#/library">${ICON.back}<span>All books</span></a>
+    <a class="back" href="#/library">${ICON.back}<span>${esc(t("book.all_books"))}</span></a>
     <header class="detail-head">
       <h1>${esc(book.title)}</h1>
       ${book.author ? `<div class="by">${esc(book.author)}</div>` : ""}
-      <div class="stat">${n} highlight${n === 1 ? "" : "s"} &amp; notes${span ? " · " + esc(span) : ""}</div>
+      <div class="stat">${esc(nphrase("book.stat_one", "book.stat_many", n))}${span ? " · " + esc(span) : ""}</div>
     </header>
     ${body}${endBlock}
   </div>`;
@@ -893,7 +970,7 @@ function wireCopyButtons(book) {
       const done = () => copiedFeedback(btn);
       const fail = () => {
         if (fallbackCopy(payload)) done();
-        else toast("Couldn't copy — you can select the text and copy it manually.");
+        else toast(t("toast.copy_failed"));
       };
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(payload).then(done).catch(fail);
@@ -905,10 +982,10 @@ function wireCopyButtons(book) {
 }
 function copiedFeedback(btn) {
   btn.classList.add("done");
-  btn.innerHTML = `${ICON.check}<span>Copied</span>`;   // our own markup only
-  toast("Highlight copied.");                            // existing role=status toast announces it
+  btn.innerHTML = `${ICON.check}<span>${esc(t("book.copied"))}</span>`;   // our markup + escaped label only
+  toast(t("toast.copied"));                              // existing role=status toast announces it
   setTimeout(() => {
-    if (btn.isConnected) { btn.classList.remove("done"); btn.innerHTML = `${ICON.copy}<span>Copy</span>`; }
+    if (btn.isConnected) { btn.classList.remove("done"); btn.innerHTML = `${ICON.copy}<span>${esc(t("book.copy"))}</span>`; }
   }, 1800);
 }
 
@@ -945,14 +1022,15 @@ function flashHighlight(node) {
 
 /* ---------- view: History ----------
    The backend ships data for each saved copy (an ISO `stamp`, a byte size);
-   the browser owns all presentation, via Intl in the reader's own locale.
-   The stamp is offset-less ISO, which `new Date()` parses as LOCAL time — on
-   purpose, since server and browser are the same machine — so never append
-   "Z" or otherwise convert it to UTC. */
+   the browser owns all presentation, via Intl in the reader's CHOSEN UI locale
+   (currentLocale(), same convention as fmtNum) so dates flip language with the
+   rest of the view. The stamp is offset-less ISO, which `new Date()` parses as
+   LOCAL time — on purpose, since server and browser are the same machine — so
+   never append "Z" or otherwise convert it to UTC. */
 function fmtStamp(stampIso) {
   const d = new Date(stampIso);
   if (isNaN(d)) return "";
-  return new Intl.DateTimeFormat(undefined,
+  return new Intl.DateTimeFormat(currentLocale(),
     { dateStyle: "medium", timeStyle: "short" }).format(d);
 }
 
@@ -963,7 +1041,7 @@ function fmtStamp(stampIso) {
 function relAge(stampIso) {
   const then = new Date(stampIso);
   if (isNaN(then) || typeof Intl.RelativeTimeFormat !== "function") return "";
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat(currentLocale(), { numeric: "auto" });
   const secs = (then - Date.now()) / 1000;   // negative = in the past
   if (Math.abs(secs) < 90) return rtf.format(0, "second");               // "now"
   const mins = Math.round(secs / 60);
@@ -986,34 +1064,33 @@ async function renderHistory() {
   const list = snaps.length
     ? `<ul class="snap-list">${snaps.map(snapRow).join("")}</ul>`
     : `<div class="empty" style="padding:30px 0">
-         <p>No saved copies yet. Back up your Kobo to create your first one.</p>
-         <div class="btn-row center"><a class="btn btn-primary" href="#/backup">${ICON.down}<span>Back up now</span></a></div>
+         <p>${esc(t("history.empty"))}</p>
+         <div class="btn-row center"><a class="btn btn-primary" href="#/backup">${ICON.down}<span>${esc(t("history.backup_now"))}</span></a></div>
        </div>`;
 
   view.innerHTML = `<div class="wrap">
-    <h1 class="page-title">History</h1>
-    <p class="page-sub">Every saved copy is kept forever and never overwritten, so
-       nothing you've highlighted can be lost.</p>
+    <h1 class="page-title">${esc(t("history.heading"))}</h1>
+    <p class="page-sub">${esc(t("history.intro"))}</p>
 
     <section class="panel">
-      <p class="eyebrow">Where your files live</p>
+      <p class="eyebrow">${esc(t("history.files_live"))}</p>
       <div class="path-row">
         <span class="path-chip">${esc(s.data_dir)}</span>
-        <button class="btn" id="open-data">${ICON.folder}<span>Open folder</span></button>
+        <button class="btn" id="open-data">${ICON.folder}<span>${esc(t("history.open_folder"))}</span></button>
       </div>
       <details class="advanced">
-        <summary>Export options</summary>
-        <p class="count-note" style="margin:10px 0 0">Choose which kinds of files to create when you back up.</p>
-        <div class="fmt-row" id="fmt" role="group" aria-label="Which files to create">
-          ${fmtChip("all", "Both", currentFmt())}
-          ${fmtChip("md", "Readable text", currentFmt())}
-          ${fmtChip("json", "A data file", currentFmt())}
+        <summary>${esc(t("history.export_options"))}</summary>
+        <p class="count-note" style="margin:10px 0 0">${esc(t("history.export_hint"))}</p>
+        <div class="fmt-row" id="fmt" role="group" aria-label="${esc(t("history.fmt_label"))}">
+          ${fmtChip("all", t("history.fmt_all"), currentFmt())}
+          ${fmtChip("md", t("history.fmt_md"), currentFmt())}
+          ${fmtChip("json", t("history.fmt_json"), currentFmt())}
         </div>
       </details>
     </section>
 
     <section class="panel">
-      <p class="eyebrow">Saved copies (${snaps.length})</p>
+      <p class="eyebrow">${esc(t("history.saved_copies", { n: fmtNum(snaps.length) }))}</p>
       ${list}
     </section>
   </div>`;
@@ -1026,16 +1103,16 @@ async function renderHistory() {
 function snapRow(sn) {
   const date = (sn.stamp && fmtStamp(sn.stamp)) || sn.name;  // no stamp -> the filename
   const age = sn.stamp ? relAge(sn.stamp) : "";
-  const size = Math.round((sn.size_bytes || 0) / 1024).toLocaleString() + " KB";
+  const size = t("history.kb", { n: fmtNum(Math.round((sn.size_bytes || 0) / 1024)) });
   return `<li class="snap ${sn.is_latest ? "latest" : ""}" data-name="${esc(sn.name)}">
     <span class="snap-dot">${ICON.clock}</span>
     <div class="snap-main">
-      <div class="snap-date">${esc(date)} ${sn.is_latest ? '<span class="pill">Newest</span>' : ""}</div>
+      <div class="snap-date">${esc(date)} ${sn.is_latest ? `<span class="pill">${esc(t("history.newest"))}</span>` : ""}</div>
       <div class="snap-sub">${age ? esc(age) + " · " : ""}${esc(size)}</div>
     </div>
     <div class="snap-acts">
-      <button class="btn" data-act="view">${ICON.book}<span>Read</span></button>
-      <button class="btn" data-act="reexport">${ICON.refresh}<span>Re-create files</span></button>
+      <button class="btn" data-act="view">${ICON.book}<span>${esc(t("history.read"))}</span></button>
+      <button class="btn" data-act="reexport">${ICON.refresh}<span>${esc(t("history.recreate"))}</span></button>
     </div>
   </li>`;
 }
@@ -1051,20 +1128,21 @@ function wireSnapActions() {
       const btn = e.currentTarget;
       const orig = btn.innerHTML;
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span><span>Working…</span>';
+      btn.innerHTML = `<span class="spinner"></span><span>${esc(t("history.working"))}</span>`;
       try {
         await api("/api/export", { method: "POST", body: { use_device: false, source: name, format: currentFmt(), lang: currentLocale() } });
         const job = await waitForExport();
         if (job.state === "done") {
-          btn.innerHTML = ICON.check + "<span>Re-created ✓</span>";
-          toast("Files re-created from this saved copy.");
+          btn.innerHTML = `${ICON.check}<span>${esc(t("history.recreated"))}</span>`;
+          toast(t("history.recreate_done"));
         } else {
           btn.innerHTML = orig;
-          toast(job.message || "Could not re-create files.");
+          // copy context: this flow re-creates from a saved copy (see errorMessage)
+          toast(errorMessage(job, "copy"));
         }
       } catch (err) {
         btn.innerHTML = orig;
-        toast(err.message || "Could not re-create files.");
+        toast(err.message || t("history.recreate_failed"));
       }
       btn.disabled = false;
       // revert the confirmation label after a moment (keep the section in place)
@@ -1089,7 +1167,8 @@ function waitForExport() {
 }
 
 function fmtChip(val, label, current) {
-  return `<button class="chip-toggle" data-fmt="${val}" aria-pressed="${current === val}">${label}</button>`;
+  // label arrives as raw t() output — this innerHTML sink owns the esc()
+  return `<button class="chip-toggle" data-fmt="${val}" aria-pressed="${current === val}">${esc(label)}</button>`;
 }
 function wireFmt() {
   document.querySelectorAll("#fmt .chip-toggle").forEach((c) => {
@@ -1098,7 +1177,7 @@ function wireFmt() {
         x.setAttribute("aria-pressed", "false"));
       c.setAttribute("aria-pressed", "true");
       state.fmt = c.dataset.fmt;  // persists across status refreshes (see currentFmt)
-      toast("Your next backup will use this.");
+      toast(t("history.fmt_saved"));
     };
   });
 }
@@ -1107,12 +1186,11 @@ function wireFmt() {
 function emptyLibrary() {
   return `<div class="empty">
     <div class="art"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M10 14h18l4 4h22v34H10z"/><path d="M20 30h24M20 38h24M20 46h14"/></svg></div>
-    <h2>Your library is waiting</h2>
-    <p>Back up your Kobo to fill it with your own highlights — or take a look
-       around with a sample library first.</p>
+    <h2>${esc(t("library.empty_title"))}</h2>
+    <p>${esc(t("library.empty_body"))}</p>
     <div class="btn-row center">
-      <a class="btn btn-primary" href="#/backup">${ICON.down}<span>Back up my Kobo</span></a>
-      <button class="btn" id="try-sample">${ICON.book}<span>Explore a sample library</span></button>
+      <a class="btn btn-primary" href="#/backup">${ICON.down}<span>${esc(t("backup.cta"))}</span></a>
+      <button class="btn" id="try-sample">${ICON.book}<span>${esc(t("library.try_sample"))}</span></button>
     </div>
   </div>`;
 }
@@ -1127,10 +1205,10 @@ function wireEmptyLibrary() {
 function sampleBanner() {
   return `<div class="sample-banner">
     <span>${ICON.book}</span>
-    <span><b>Sample library.</b> This is example data so you can see how Markwell looks.</span>
+    <span><b>${esc(t("library.sample_title"))}</b> ${esc(t("library.sample_body"))}</span>
     <div class="btn-row">
-      <a class="btn" href="#/backup">Back up my Kobo</a>
-      <button class="btn btn-ghost" id="exit-sample">Exit sample</button>
+      <a class="btn" href="#/backup">${esc(t("backup.cta"))}</a>
+      <button class="btn btn-ghost" id="exit-sample">${esc(t("library.exit_sample"))}</button>
     </div>
   </div>`;
 }
@@ -1144,10 +1222,9 @@ function wireSampleBanner() {
 
 function showError() {
   view.innerHTML = `<div class="wrap"><div class="empty">
-    <h2>Markwell hit a snag</h2>
-    <p>Something went wrong loading this view. Your highlights and saved copies
-       are safe — try reloading.</p>
-    <div class="btn-row center"><button class="btn" id="reload-btn">Reload</button></div>
+    <h2>${esc(t("error.view_title"))}</h2>
+    <p>${esc(t("error.view_body"))}</p>
+    <div class="btn-row center"><button class="btn" id="reload-btn">${esc(t("error.view_reload"))}</button></div>
   </div></div>`;
   const b = document.getElementById("reload-btn");
   if (b) b.onclick = () => location.reload();
