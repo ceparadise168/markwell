@@ -11,8 +11,7 @@ import pytest
 from conftest import make_kobo_db
 from markwell.gui import sample
 from markwell.gui.server import build_server
-from markwell.gui.service import (Service, _coerce_fmt, _coerce_lang,
-                                  _parse_stamp)
+from markwell.gui.service import Service, _coerce_lang, _parse_stamp
 
 
 @pytest.fixture
@@ -46,6 +45,7 @@ def test_status_empty(service):
     assert s["has_library"] is False
     assert s["data_dir"].endswith("data")
     assert isinstance(s["device_connected"], bool)
+    assert s["format"] == "md,json,html"  # curated default, reported as-is
 
 
 def test_library_empty_when_no_snapshot(service):
@@ -158,23 +158,47 @@ def test_export_unknown_lang_coerces_to_english(service, kobo_db):
     assert "# Kobo Highlights" in index
 
 
+def test_service_default_fmt_is_the_curated_trio(service, kobo_db):
+    # md+json+html out of the box; csv/anki stay opt-in for non-technical users
+    name = _place_snapshot(service, kobo_db, "20260601-120000").name
+    assert service.start_export(use_device=False, source=name) is True
+    assert _wait_export(service)["state"] == "done"
+    assert (service.out_dir / "index.md").is_file()
+    assert (service.out_dir / "highlights.json").is_file()
+    assert (service.out_dir / "library.html").is_file()
+    assert not (service.out_dir / "anki.tsv").exists()
+    assert not (service.out_dir / "highlights.csv").exists()
+
+
+def test_export_fmt_comma_list_renders_exactly_those(service, kobo_db):
+    name = _place_snapshot(service, kobo_db, "20260601-120000").name
+    assert service.start_export(use_device=False, source=name,
+                                fmt="md,anki") is True
+    assert _wait_export(service)["state"] == "done"
+    assert (service.out_dir / "index.md").is_file()
+    assert (service.out_dir / "anki.tsv").is_file()
+    assert not (service.out_dir / "highlights.json").exists()
+
+
 def test_export_unknown_fmt_coerces_to_default(service, kobo_db):
     # fmt is untrusted browser input with teeth: unclamped, an unknown value
     # would render zero files and write_outputs would then prune every
     # previously exported file as stale — silent data deletion reported as
-    # success. Junk of any shape must mean the configured default instead.
+    # success. Junk of any shape (parse_formats rejects it) must mean the
+    # configured default instead — never an error, never a pruned library.
     name = _place_snapshot(service, kobo_db, "20260601-120000").name
     assert service.start_export(use_device=False, source=name) is True
     assert _wait_export(service)["state"] == "done"
-    prior = [service.out_dir / "index.md", service.out_dir / "highlights.json"]
+    prior = [service.out_dir / "index.md", service.out_dir / "highlights.json",
+             service.out_dir / "library.html"]
     assert all(p.is_file() for p in prior)
 
-    for junk in ("evil", ["md"]):  # unknown string, non-string
+    for junk in ("evil", 123, []):  # unknown string, non-string, empty
         assert service.start_export(use_device=False, source=name,
                                     fmt=junk) is True
         job = _wait_export(service)
         assert job["state"] == "done", job
-        assert job["result"]["files"] >= 2  # default "all": md + json rendered
+        assert job["result"]["files"] >= 3  # default trio rendered
         assert all(p.is_file() for p in prior)  # prior outputs not pruned
 
 
@@ -215,9 +239,6 @@ def test_helpers():
     assert _coerce_lang("zh-TW") == "zh-TW"
     assert _coerce_lang(None) == "en"
     assert _coerce_lang(["zh-TW"]) == "en"  # unhashable junk coerces, never errors
-    assert _coerce_fmt("md", "all") == "md"
-    assert _coerce_fmt(None, "all") == "all"
-    assert _coerce_fmt(["md"], "json") == "json"  # junk type coerces, never errors
 
 
 # ---- server: security boundary ----------------------------------------------
@@ -412,3 +433,29 @@ def test_api_export_unknown_lang_behaves_as_english(live, service, kobo_db):
     status, index = _post_export_and_wait(live, service, kobo_db, "xx")
     assert status == 200
     assert "# Kobo Highlights" in index
+
+
+def test_api_export_fmt_comma_list_passes_through(live, service, kobo_db):
+    name = _place_snapshot(service, kobo_db, "20260601-120000").name
+    httpd, port = live
+    status, _ = _post(port, "/api/export", token=httpd.token,
+                      body={"use_device": False, "source": name,
+                            "format": "md,anki"})
+    assert status == 200
+    job = _wait_export(service)
+    assert job["state"] == "done", job
+    assert (service.out_dir / "anki.tsv").is_file()
+    assert not (service.out_dir / "highlights.csv").exists()
+
+
+def test_api_export_fmt_junk_silently_uses_default(live, service, kobo_db):
+    name = _place_snapshot(service, kobo_db, "20260601-120000").name
+    httpd, port = live
+    for junk in (123, []):
+        status, _ = _post(port, "/api/export", token=httpd.token,
+                          body={"use_device": False, "source": name,
+                                "format": junk})
+        assert status == 200  # never a 4xx for a fmt we don't ship
+        job = _wait_export(service)
+        assert job["state"] == "done", job
+    assert (service.out_dir / "library.html").is_file()  # default trio ran

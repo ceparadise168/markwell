@@ -8,7 +8,7 @@ import sqlite3
 import sys
 
 from . import __version__, device, reader
-from .export import _MANIFEST, build_files, build_meta, write_outputs  # noqa: F401 (re-export)
+from .export import _MANIFEST, build_files, build_meta, parse_formats, write_outputs  # noqa: F401 (re-export)
 from .reader import UnsupportedSchemaError
 
 
@@ -105,8 +105,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="markwell",
         description="Safely back up and export Kobo highlights and notes.")
-    ap.add_argument("--format", choices=["md", "json", "all"], default="all",
-                    help="what to export (default: all)")
+    ap.add_argument("--format", default="all", metavar="SPEC",
+                    help="what to export: md,json,csv,anki,html — one id, "
+                         "a comma list, or all (default: all)")
     ap.add_argument("--lang", choices=["en", "zh-TW", "ja", "ko"], default="en",
                     help="language for Markdown export labels (default: en)")
     ap.add_argument("--snapshot-only", action="store_true",
@@ -122,6 +123,12 @@ def main(argv=None):
                     help="show full tracebacks instead of clean error messages")
     ap.add_argument("--version", action="version", version=f"markwell {__version__}")
     args = ap.parse_args(argv)
+
+    try:  # validate --format up front: a typo must fail before any device work
+        parse_formats(args.format)
+    except ValueError as e:
+        print(e, file=sys.stderr)
+        sys.exit(2)
 
     try:
         _run(args)

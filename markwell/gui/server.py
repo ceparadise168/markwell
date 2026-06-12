@@ -31,6 +31,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from ..export import parse_formats
 from ..reader import UnsupportedSchemaError
 from .service import Service, default_data_dir
 
@@ -308,8 +309,9 @@ def main(argv=None) -> None:
     ap.add_argument("--data-dir", default=str(default_data_dir()),
                     help="where backups and exports are kept "
                          "(default: ~/Markwell)")
-    ap.add_argument("--format", choices=["md", "json", "all"], default="all",
-                    help="what to export (default: all)")
+    ap.add_argument("--format", default="md,json,html", metavar="SPEC",
+                    help="what to export: md,json,csv,anki,html — one id, "
+                         "a comma list, or all (default: md,json,html)")
     ap.add_argument("--port", type=int, default=0,
                     help="port to listen on (default: an automatic free port)")
     ap.add_argument("--no-browser", action="store_true",
@@ -317,6 +319,12 @@ def main(argv=None) -> None:
     ap.add_argument("--desktop", action="store_true",
                     help="run with desktop app lifecycle controls")
     args = ap.parse_args(argv)
+
+    try:  # validate up front, or every later export would fail confusingly
+        parse_formats(args.format)
+    except ValueError as e:
+        print(e, file=sys.stderr)
+        sys.exit(2)
 
     service = Service(args.data_dir, fmt=args.format)
     httpd = build_server(service, port=args.port, desktop=args.desktop)

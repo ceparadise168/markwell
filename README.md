@@ -46,9 +46,9 @@ pip install markwell   # (once published)
 Plug in your Kobo, then:
 
 ```bash
-markwell                 # snapshot the device, then export Markdown + JSON
-markwell --format md     # Markdown only
-markwell --format json   # JSON only
+markwell                 # snapshot the device, then export every format
+markwell --format md     # one format: md, json, csv, anki, or html
+markwell --format md,csv # any comma list of those ("all" = every format)
 markwell --snapshot-only # just back up the database, no export
 markwell --db PATH       # export from an existing snapshot (no device read)
 markwell --device PATH   # Kobo mount point OR KoboReader.sqlite path (overrides auto-detect)
@@ -70,7 +70,10 @@ backups/
 output/
 ├── index.md            all books, counts, links
 ├── <book>.md           one file per book, highlights in reading order
-└── highlights.json     machine-readable export (schema "markwell/1")
+├── highlights.json     machine-readable export (schema "markwell/1")
+├── highlights.csv      one row per highlight, for Excel / Numbers / Notion
+├── anki.tsv            flashcards ready to import into Anki
+└── library.html        the whole library as a single self-contained page
 ```
 
 ## The app (no terminal needed)
@@ -99,7 +102,7 @@ standard library — no extra dependencies, no build step.
 
 ## How it works
 
-`detect device → snapshot once (read-only) → read snapshot → Markdown + JSON`
+`detect device → snapshot once (read-only) → read snapshot → render the chosen formats`
 
 The device is read at most once per run and never modified. The exports are a
 projection of the latest snapshot only; it is the **snapshot history** that

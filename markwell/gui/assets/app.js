@@ -257,7 +257,7 @@ const state = {
   lib: null,          // cached books document for `source`
   flat: null,         // flat highlight index for `lib` (hero + search); rebuilt with lib
   q: "",
-  fmt: null,          // user-chosen export format; survives status refreshes
+  fmt: null,          // export formats this session (comma string); written through to localStorage
   jumpTo: null,       // {bookIdx, hlIdx} hand-off: hero/search → renderBook scrolls+flashes
 };
 
@@ -265,8 +265,56 @@ let pollGen = 0;      // bumped on navigation to retire stale export-poll loops
 let srPhase = "";     // last phase announced, so the live region doesn't repeat
 let srSearchTimer;    // debounce for the search live-region announcement
 
-function currentFmt() {
-  return state.fmt || (state.status && state.status.format) || "all";
+/* ---------- export formats ----------
+   FORMAT_IDS mirrors the Python registry (markwell/export.py FORMATS): same
+   ids, same canonical order. formatOptions() pairs each id with its localized
+   name + one-line description — the t() keys stay literal so the i18n harvest
+   test can hold them against the dictionary. The reader's selection persists
+   in localStorage and rides every export POST as a comma string; the backend
+   silently falls back to its own default on anything it doesn't recognize. */
+const FMT_KEY = "markwell-formats";
+const FORMAT_IDS = ["md", "json", "csv", "anki", "html"];
+const FMT_DEFAULT = "md,json,html";   // mirrors the Service's curated default
+
+function formatOptions() {
+  return [
+    ["md", t("fmt.md"), t("fmt.md_desc")],
+    ["json", t("fmt.json"), t("fmt.json_desc")],
+    ["csv", t("fmt.csv"), t("fmt.csv_desc")],
+    ["anki", t("fmt.anki"), t("fmt.anki_desc")],
+    ["html", t("fmt.html"), t("fmt.html_desc")],
+  ];
+}
+
+/* Comma string / junk -> ids in canonical order, or null when none are valid.
+   "all" (a server-config value, not a UI one) means every format. */
+function normalizeFormats(spec) {
+  const want = String(spec == null ? "" : spec).split(",").map((s) => s.trim());
+  if (want.includes("all")) return FORMAT_IDS.slice();
+  const picked = FORMAT_IDS.filter((id) => want.includes(id));
+  return picked.length ? picked : null;
+}
+
+function storedFormats() {
+  try { return normalizeFormats(localStorage.getItem(FMT_KEY)); }
+  catch (_) { return null; }
+}
+
+/* The formats an export should produce: this session's live choice, else last
+   visit's persisted one, else the server's configured default, else the trio. */
+function currentFormats() {
+  return normalizeFormats(state.fmt)
+    || storedFormats()
+    || normalizeFormats(state.status && state.status.format)
+    || normalizeFormats(FMT_DEFAULT);
+}
+function currentFmt() {   // the comma string export POST bodies carry
+  return currentFormats().join(",");
+}
+function setFormats(ids) {
+  state.fmt = FORMAT_IDS.filter((id) => ids.includes(id)).join(",");
+  try { localStorage.setItem(FMT_KEY, state.fmt); }
+  catch (_) { /* private mode: the choice still holds for this session */ }
 }
 
 /* Which library source a view should load: an explicit 'sample' stays sample;
@@ -457,12 +505,14 @@ async function renderBackup() {
       <p id="sr-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
       <div id="progress"></div>
       ${lastLine}
+      ${fmtOptionsHTML()}
     </section>
   </div>`;
 
   const retry = document.getElementById("retry");
   if (retry) retry.onclick = () => renderBackup();
   document.getElementById("backup-btn").onclick = startBackup;
+  wireFmt();
 
   if (job.state === "running") pollExport();
 }
@@ -519,12 +569,14 @@ function renderProgress(job) {
   const note = document.querySelector(".hero-note");
   const last = document.querySelector(".hero-last");
   const banner = document.querySelector(".banner");
+  const options = document.querySelector(".hero details.advanced");
   const sr = document.getElementById("sr-status");
   const busy = job.state === "running" || job.state === "done";
   if (btn) { btn.style.display = busy ? "none" : ""; btn.disabled = job.state === "running"; }
   if (note) note.style.display = busy ? "none" : "";
   if (last) last.style.display = busy ? "none" : "";
   if (banner) banner.style.display = busy ? "none" : "";
+  if (options) options.style.display = busy ? "none" : "";
 
   if (job.state === "error") {
     // device context: this progress box only ever shows the Backup view's own
@@ -1078,15 +1130,7 @@ async function renderHistory() {
         <span class="path-chip">${esc(s.data_dir)}</span>
         <button class="btn" id="open-data">${ICON.folder}<span>${esc(t("history.open_folder"))}</span></button>
       </div>
-      <details class="advanced">
-        <summary>${esc(t("history.export_options"))}</summary>
-        <p class="count-note" style="margin:10px 0 0">${esc(t("history.export_hint"))}</p>
-        <div class="fmt-row" id="fmt" role="group" aria-label="${esc(t("history.fmt_label"))}">
-          ${fmtChip("all", t("history.fmt_all"), currentFmt())}
-          ${fmtChip("md", t("history.fmt_md"), currentFmt())}
-          ${fmtChip("json", t("history.fmt_json"), currentFmt())}
-        </div>
-      </details>
+      ${fmtOptionsHTML()}
     </section>
 
     <section class="panel">
@@ -1166,18 +1210,41 @@ function waitForExport() {
   });
 }
 
-function fmtChip(val, label, current) {
-  // label arrives as raw t() output — this innerHTML sink owns the esc()
-  return `<button class="chip-toggle" data-fmt="${val}" aria-pressed="${current === val}">${esc(label)}</button>`;
+/* The "Export options" disclosure, shared by the Backup and History views: one
+   checkbox per registry format, each with a localized name and a one-line
+   description (labels arrive as raw t() output — this innerHTML sink owns the
+   esc()). The fieldset+legend names the group for AT; ids in `value` are our
+   own literals. At least one box must stay checked — see wireFmt. */
+function fmtOptionsHTML() {
+  const picked = currentFormats();
+  const rows = formatOptions().map(([id, name, desc]) => `
+      <label class="fmt-opt">
+        <input type="checkbox" value="${id}" ${picked.includes(id) ? "checked" : ""}>
+        <span class="fmt-opt-text">
+          <span class="fmt-opt-name">${esc(name)}</span>
+          <span class="fmt-opt-desc">${esc(desc)}</span>
+        </span>
+      </label>`).join("");
+  return `<details class="advanced">
+      <summary>${esc(t("fmt.options"))}</summary>
+      <p class="count-note fmt-hint">${esc(t("fmt.hint"))}</p>
+      <fieldset class="fmt-group" id="fmt">
+        <legend class="sr-only">${esc(t("fmt.label"))}</legend>${rows}
+      </fieldset>
+    </details>`;
 }
 function wireFmt() {
-  document.querySelectorAll("#fmt .chip-toggle").forEach((c) => {
-    c.onclick = () => {
-      document.querySelectorAll("#fmt .chip-toggle").forEach((x) =>
-        x.setAttribute("aria-pressed", "false"));
-      c.setAttribute("aria-pressed", "true");
-      state.fmt = c.dataset.fmt;  // persists across status refreshes (see currentFmt)
-      toast(t("history.fmt_saved"));
+  const boxes = Array.from(document.querySelectorAll("#fmt input[type=checkbox]"));
+  boxes.forEach((box) => {
+    box.onchange = () => {
+      const picked = boxes.filter((b) => b.checked).map((b) => b.value);
+      if (!picked.length) {   // never zero files: snap back and say why
+        box.checked = true;
+        toast(t("fmt.keep_one"));
+        return;
+      }
+      setFormats(picked);
+      toast(t("fmt.saved"));
     };
   });
 }

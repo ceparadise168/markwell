@@ -14,10 +14,67 @@ import pathlib
 
 from . import __version__
 from .model import Book
+from .render import anki as anki_render
+from .render import csv as csv_render
+from .render import html as html_render
 from .render import json as json_render
 from .render import markdown as md_render
 
 _MANIFEST = ".markwell-manifest.json"
+
+#: The format registry — THE single source of what Markwell can export.
+#: id -> pure renderer with the uniform signature render(books, meta) ->
+#: {filename: content}. Insertion order is the canonical order: every list a
+#: front-end shows and every multi-format output `build_files` assembles
+#: follows it, regardless of the order the user asked in. Adding a format =
+#: one renderer module + one line here, plus the GUI mirror (app.js
+#: FORMAT_IDS / formatOptions and the fmt.* copy in i18n.js) — a parity test
+#: holds that mirror to this registry, so forgetting it fails the suite.
+FORMATS = {
+    "md": md_render.render,
+    "json": json_render.render,
+    "csv": csv_render.render,
+    "anki": anki_render.render,
+    "html": html_render.render,
+}
+
+
+def _format_error(problem) -> ValueError:
+    return ValueError(
+        f"{problem} (choose from {', '.join(FORMATS)}, or all)")
+
+
+def parse_formats(spec) -> list:
+    """Resolve a format spec to a list of registry ids in canonical order.
+
+    `spec` is "all", a comma-separated string ("md, csv" — spaces tolerated),
+    or an iterable of ids ("all" allowed as a token in either). Duplicates
+    collapse and the result always follows FORMATS order, not the caller's.
+    Anything else — an unknown id, an empty spec, a non-iterable — raises
+    ValueError (only ever ValueError, so front-ends have one error to map)
+    with the same message everywhere.
+    """
+    if isinstance(spec, str):
+        tokens = [part.strip() for part in spec.split(",") if part.strip()]
+    elif spec is None:
+        tokens = []
+    else:
+        try:
+            tokens = list(spec)
+        except TypeError:
+            raise _format_error(f"unknown format: {spec!r}") from None
+
+    wanted = set()
+    for token in tokens:
+        if token == "all":
+            wanted.update(FORMATS)
+        elif isinstance(token, str) and token in FORMATS:
+            wanted.add(token)
+        else:
+            raise _format_error(f"unknown format: {token}")
+    if not wanted:
+        raise _format_error("no format given")
+    return [fid for fid in FORMATS if fid in wanted]
 
 
 def build_meta(source: str, freshness: str, lang: str = "en") -> dict:
@@ -38,17 +95,16 @@ def build_meta(source: str, freshness: str, lang: str = "en") -> dict:
     }
 
 
-def build_files(books: list[Book], meta: dict, fmt: str) -> dict[str, str]:
-    """Render `books` to {filename: content} for the requested format.
+def build_files(books: list[Book], meta: dict, fmt) -> dict[str, str]:
+    """Render `books` to {filename: content} for the requested format(s).
 
-    `fmt` is "md", "json", or "all". `meta` carries generated/source/
-    source_freshness/version/lang, exactly as the renderers expect.
+    `fmt` is anything `parse_formats` accepts ("all", "md,csv", an iterable of
+    ids) and raises the same ValueError on junk. `meta` carries generated/
+    source/source_freshness/version/lang, exactly as the renderers expect.
     """
     files: dict[str, str] = {}
-    if fmt in ("md", "all"):
-        files.update(md_render.render(books, meta))
-    if fmt in ("json", "all"):
-        files.update(json_render.render(books, meta))
+    for fid in parse_formats(fmt):
+        files.update(FORMATS[fid](books, meta))
     return files
 
 

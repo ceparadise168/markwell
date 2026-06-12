@@ -491,11 +491,21 @@ mark { background: var(--marker-strong); color: var(--ink); padding: 0 .08em; bo
 details.advanced { margin-top: 18px; }
 details.advanced summary { cursor: pointer; color: var(--ink-soft); font-weight: 550;
   padding: 6px 0; }
-.fmt-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-.chip-toggle { padding: 8px 15px; border-radius: 999px; border: 1px solid var(--line);
-  background: var(--surface); cursor: pointer; font: inherit; color: var(--ink-soft); }
-.chip-toggle[aria-pressed="true"] { background: var(--accent-soft);
-  border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+/* the Export options checkbox group (Backup + History) */
+.advanced .fmt-hint { margin: 8px 0 0; }
+.fmt-group { border: 0; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; }
+.fmt-opt { display: flex; gap: 11px; align-items: flex-start; padding: 9px 10px;
+  border-radius: 10px; cursor: pointer; }
+.fmt-opt:hover { background: var(--surface-2); }
+.fmt-opt input { margin: 4px 0 0; flex: none; width: 16px; height: 16px;
+  accent-color: var(--accent); cursor: pointer; }
+.fmt-opt-name { display: block; font-weight: 600; }
+.fmt-opt-desc { display: block; color: var(--ink-faint); font-size: .85rem; }
+/* inside the centered backup hero, the options read as a left-aligned block */
+.hero details.advanced { max-width: 480px; margin: 26px auto 0; text-align: left; }
+.hero details.advanced summary { text-align: center; }
+.hero .fmt-hint { font-size: .85rem; color: var(--ink-faint); max-width: none;
+  margin: 8px 0 0; }
 
 /* ---- empty / error states ---- */
 .empty { text-align: center; padding: 50px 24px; }

@@ -90,6 +90,27 @@ def test_no_hardcoded_english_sentinels_in_app_js():
     assert not leaked, f"hardcoded English back in app.js: {leaked}"
 
 
+def test_format_registry_mirrored_in_gui_assets():
+    """Cross-layer parity (same spirit as labels.LABELS above): the GUI's
+    format mirror follows the Python registry. A format added in export.py
+    without its GUI counterpart — the FORMAT_IDS entry, the formatOptions()
+    t() row, the fmt.* copy in every locale — must fail here, not appear as a
+    missing checkbox in someone's browser."""
+    from markwell.export import FORMATS
+    src = (ASSETS / "app.js").read_text(encoding="utf-8")
+    m = re.search(r"const FORMAT_IDS = \[([^\]]*)\]", src)
+    assert m, "app.js must declare FORMAT_IDS"
+    ids = re.findall(r'"([\w-]+)"', m.group(1))
+    assert ids == list(FORMATS), "app.js FORMAT_IDS drifted from export.FORMATS"
+    d = _dicts()
+    for fid in FORMATS:
+        assert f't("fmt.{fid}")' in src, f"app.js has no label row for {fid}"
+        assert f't("fmt.{fid}_desc")' in src, f"app.js has no description for {fid}"
+        for loc, table in d.items():
+            assert {f"fmt.{fid}", f"fmt.{fid}_desc"} <= set(table), (
+                f"{loc} is missing the fmt.{fid} copy")
+
+
 def test_every_data_i18n_key_in_index_html_exists_in_en():
     d = _dicts()
     html = (ASSETS / "index.html").read_text(encoding="utf-8")

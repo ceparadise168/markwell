@@ -18,7 +18,7 @@ import threading
 
 from . import sample as sample_lib
 from .. import __version__, device, reader
-from ..export import build_files, build_meta, write_outputs
+from ..export import build_files, build_meta, parse_formats, write_outputs
 from ..reader import UnsupportedSchemaError
 from ..render import json as json_render
 from ..render import labels
@@ -54,20 +54,6 @@ def _coerce_lang(lang) -> str:
     isn't a known locale — wrong code, wrong type, missing — silently means
     English, so a stale or hand-edited page can never wedge an export."""
     return lang if isinstance(lang, str) and lang in labels.LABELS else "en"
-
-
-def _coerce_fmt(fmt, default: str) -> str:
-    """Clamp a requested export format to one we ship, like `_coerce_lang`.
-
-    Untrusted browser input with teeth: an unknown format would reach
-    `build_files`, render zero files, and `write_outputs` would then prune
-    every previously exported file as stale. Anything that isn't a known
-    format string — wrong value, wrong type, missing — means the service's
-    configured default. Interim clamp: Task 9's format registry
-    (`parse_formats`) replaces this."""
-    if isinstance(fmt, str) and fmt in ("md", "json", "all"):
-        return fmt
-    return default
 
 
 def _reveal(path: pathlib.Path) -> bool:
@@ -117,7 +103,10 @@ class ExportJob:
 class Service:
     """The GUI's operations against one data directory."""
 
-    def __init__(self, data_dir, fmt: str = "all") -> None:
+    def __init__(self, data_dir, fmt: str = "md,json,html") -> None:
+        # Curated default for non-technical users: the readable trio. csv and
+        # anki are opt-in — a spreadsheet and a flashcard deck appearing
+        # unasked would read as clutter, not value.
         self.data_dir = pathlib.Path(data_dir).expanduser()
         self.backup_dir = self.data_dir / "backups"
         self.out_dir = self.data_dir / "output"
@@ -219,8 +208,17 @@ class Service:
 
         `lang` picks the exported files' label language (the browser sends the
         reader's UI language so files match what they see on screen); unknown
-        or missing values silently mean English. `fmt` is clamped the same
-        way: anything but a format we ship means the configured default."""
+        or missing values silently mean English. `fmt` follows the same
+        silent-coerce philosophy: it is untrusted browser input with teeth —
+        unclamped, an unknown format would render zero files and
+        `write_outputs` would then prune every previously exported file as
+        stale. Anything `parse_formats` rejects — unknown id, wrong type,
+        missing — means the service's configured default, never an error;
+        anything it accepts is canonicalized to a comma string."""
+        try:
+            fmt = ",".join(parse_formats(fmt))
+        except ValueError:
+            fmt = self.fmt
         with self._lock:
             if self._job.state == "running":
                 return False
@@ -231,8 +229,7 @@ class Service:
                                  else "Reading your highlights…")
         thread = threading.Thread(
             target=self._run_export,
-            args=(use_device, source, _coerce_fmt(fmt, self.fmt),
-                  _coerce_lang(lang)),
+            args=(use_device, source, fmt, _coerce_lang(lang)),
             daemon=True)
         thread.start()
         return True
