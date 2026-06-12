@@ -5,17 +5,10 @@ import zipfile
 
 import pytest
 
+from conftest import symlink_or_skip
 from markwell.gui.service import Service
 
 
-def _symlink_or_skip(target, link):
-    """Plant a symlink, or skip where the platform refuses (e.g. Windows
-    without the symlink privilege)."""
-    try:
-        os.symlink(str(target), str(link),
-                   target_is_directory=pathlib.Path(target).is_dir())
-    except (OSError, NotImplementedError):
-        pytest.skip("cannot create symlinks on this platform")
 
 
 @pytest.fixture
@@ -118,7 +111,7 @@ def test_archive_excludes_symlinked_file_in_output(service, tmp_path):
     _seed_outputs(service, names=("index.md",))
     secret = tmp_path / "secret-outside"
     secret.write_text("private key material", encoding="utf-8")
-    _symlink_or_skip(secret, service.out_dir / "leak.md")
+    symlink_or_skip(secret, service.out_dir / "leak.md")
 
     result = service.make_archive()
 
@@ -135,7 +128,7 @@ def test_archive_never_descends_into_symlinked_directory(service, tmp_path):
     outside = tmp_path / "outside-dir"
     outside.mkdir()
     (outside / "id_rsa").write_text("SECRET", encoding="utf-8")
-    _symlink_or_skip(outside, service.out_dir / "evil")
+    symlink_or_skip(outside, service.out_dir / "evil")
 
     result = service.make_archive()
 
@@ -149,7 +142,7 @@ def test_archive_never_picks_a_symlinked_snapshot_as_latest(service, tmp_path):
     outside = tmp_path / "outside-db"
     outside.write_bytes(b"NOT YOUR SNAPSHOT")
     # the name sorts AFTER every real snapshot, so it would win latest-pick
-    _symlink_or_skip(outside,
+    symlink_or_skip(outside,
                      service.backup_dir / "KoboReader-29990101-000000.sqlite")
 
     result = service.make_archive()
@@ -165,7 +158,7 @@ def test_archive_with_only_a_symlinked_snapshot_is_nothing_to_archive(
     service.backup_dir.mkdir(parents=True)
     outside = tmp_path / "outside-db"
     outside.write_bytes(b"NOT YOUR SNAPSHOT")
-    _symlink_or_skip(outside,
+    symlink_or_skip(outside,
                      service.backup_dir / "KoboReader-20260601-120000.sqlite")
     with pytest.raises(ValueError) as err:
         service.make_archive()

@@ -85,3 +85,18 @@ def wal_kobo_db(tmp_path):
         yield db
     finally:
         conn.close()
+
+
+def symlink_or_skip(target, link):
+    """Plant a symlink, or skip where the platform refuses (e.g. Windows
+    without the symlink privilege). Shared by the archive/relocation tests."""
+    import os
+    import pathlib
+
+    import pytest
+
+    try:
+        os.symlink(str(target), str(link),
+                   target_is_directory=pathlib.Path(target).is_dir())
+    except (OSError, NotImplementedError):
+        pytest.skip("cannot create symlinks on this platform")

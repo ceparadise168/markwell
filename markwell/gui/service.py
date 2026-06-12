@@ -50,7 +50,7 @@ def default_data_dir() -> pathlib.Path:
     return pathlib.Path.home() / "Markwell"
 
 
-def detect_cloud_roots(home=None) -> list[dict]:
+def detect_cloud_roots(home: str | pathlib.Path | None = None) -> list[dict]:
     """Cloud-synced folders that already exist on this machine.
 
     Returns ``[{"id", "label", "path"}]`` — at most one entry per provider,
@@ -105,7 +105,7 @@ def detect_cloud_roots(home=None) -> list[dict]:
     return roots
 
 
-def _validate_data_dir(target) -> pathlib.Path:
+def _validate_data_dir(target: str | pathlib.Path) -> pathlib.Path:
     """Validate a proposed Markwell data directory; return it resolved.
 
     SECURITY — this is the fence around the one exception to "nothing the
@@ -467,7 +467,7 @@ class Service:
 
     # --- settings & archive ----------------------------------------------------
 
-    def change_data_dir(self, target) -> dict:
+    def change_data_dir(self, target: str | pathlib.Path) -> dict:
         """Relocate the data dir to `target` by COPYING — never move or delete.
 
         SECURITY: `target` ultimately comes from the browser — the one fenced

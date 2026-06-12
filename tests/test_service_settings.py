@@ -11,6 +11,7 @@ import sys
 
 import pytest
 
+from conftest import symlink_or_skip
 from markwell import config
 from markwell.gui.service import (Service, default_data_dir, detect_cloud_roots,
                                   resolve_data_dir)
@@ -177,14 +178,6 @@ def test_change_persists_data_dir_and_preserves_other_config_keys(service,
 
 # ---- symlinks: never listed as snapshots, never copied by relocation ---------
 
-def _symlink_or_skip(target, link):
-    """Plant a symlink, or skip where the platform refuses (e.g. Windows
-    without the symlink privilege)."""
-    try:
-        os.symlink(str(target), str(link),
-                   target_is_directory=pathlib.Path(target).is_dir())
-    except (OSError, NotImplementedError):
-        pytest.skip("cannot create symlinks on this platform")
 
 
 def test_snapshot_list_excludes_symlinked_snapshot(service, tmp_path):
@@ -192,7 +185,7 @@ def test_snapshot_list_excludes_symlinked_snapshot(service, tmp_path):
     # must never be listed, win latest-pick, or become loadable by name
     outside = tmp_path / "outside-db"
     outside.write_bytes(b"NOT YOUR SNAPSHOT")
-    _symlink_or_skip(outside,
+    symlink_or_skip(outside,
                      service.backup_dir / "KoboReader-29990101-000000.sqlite")
     rows = service.snapshot_list()
     assert [r["name"] for r in rows] == [
@@ -206,7 +199,7 @@ def test_change_never_copies_symlinks(service, tmp_path):
     # dereferenced into the new folder — relocation copies only real files
     secret = tmp_path / "secret-outside"
     secret.write_text("private", encoding="utf-8")
-    _symlink_or_skip(secret, service.out_dir / "leak.md")
+    symlink_or_skip(secret, service.out_dir / "leak.md")
     outside_dir = tmp_path / "outside-dir"
     outside_dir.mkdir()
     (outside_dir / "id_rsa").write_text("SECRET", encoding="utf-8")
