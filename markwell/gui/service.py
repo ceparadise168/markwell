@@ -6,18 +6,31 @@ read, and reveal folders. Every device or disk operation delegates to the same
 `device` / `reader` / `export` modules the CLI uses, so the GUI inherits the
 identical safety guarantees: the device is read at most once per backup,
 read-only, and never written; snapshots are timestamped and never overwritten.
+
+The data-dir setting is the one fenced exception to the GUI security rule that
+nothing the browser sends is used as a filesystem path: the reader may point
+Markwell's data folder anywhere — typically inside an existing iCloud/Dropbox/
+Drive sync folder, which is how Markwell offers cloud backup without talking
+to any cloud API. That single value crosses the fence only through the layered
+checks in `_validate_data_dir()` (plus a writability probe), relocation only
+ever COPIES — Markwell never moves or deletes user data — and the Kobo itself
+stays strictly read-only.
 """
 from __future__ import annotations
 
 import datetime
+import os
 import pathlib
+import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
+import zipfile
 
 from . import sample as sample_lib
-from .. import __version__, device, reader
+from .. import __version__, config, device, reader
 from ..export import build_files, build_meta, parse_formats, write_outputs
 from ..reader import UnsupportedSchemaError
 from ..render import json as json_render
@@ -35,6 +48,134 @@ def default_data_dir() -> pathlib.Path:
     home-folder location the UI always shows.
     """
     return pathlib.Path.home() / "Markwell"
+
+
+def detect_cloud_roots(home=None) -> list[dict]:
+    """Cloud-synced folders that already exist on this machine.
+
+    Returns ``[{"id", "label", "path"}]`` — at most one entry per provider,
+    the first existing candidate winning. This powers the Settings screen's
+    "put my Markwell folder in the cloud" suggestions: Markwell gets cloud
+    backup by *living inside* the provider's existing sync folder, never by
+    talking to an API.
+
+    Pure read-only probing — `is_dir()` checks and directory globs; nothing
+    is created, opened, or written. A module-level function (like
+    `default_data_dir`) because it describes the machine, not any Service
+    state. `home` is overridable for tests; the default, `pathlib.Path.home()`,
+    resolves from %USERPROFILE% on Windows, so the Windows probes below are
+    the documented %USERPROFILE%-relative locations.
+    """
+    home = pathlib.Path.home() if home is None else pathlib.Path(home)
+    probes: list = []
+    if sys.platform == "darwin":
+        storage = home / "Library" / "CloudStorage"
+        probes = [
+            ("icloud", "iCloud Drive",
+             [home / "Library" / "Mobile Documents" / "com~apple~CloudDocs"]),
+            ("dropbox", "Dropbox",
+             [home / "Dropbox"] + sorted(storage.glob("Dropbox*"))),
+            ("gdrive", "Google Drive", sorted(storage.glob("GoogleDrive*"))),
+            ("onedrive", "OneDrive",
+             sorted(storage.glob("OneDrive*")) + [home / "OneDrive"]),
+        ]
+    elif sys.platform.startswith("win"):
+        onedrive_env = os.environ.get("OneDrive")
+        probes = [
+            ("icloud", "iCloud Drive", [home / "iCloudDrive"]),
+            ("dropbox", "Dropbox", [home / "Dropbox"]),
+            ("gdrive", "Google Drive", [home / "Google Drive"]),
+            ("onedrive", "OneDrive",
+             ([pathlib.Path(onedrive_env)] if onedrive_env else [])
+             + [home / "OneDrive"]),
+        ]
+    elif sys.platform.startswith("linux"):
+        probes = [
+            ("dropbox", "Dropbox", [home / "Dropbox"]),
+            ("gdrive", "Google Drive", [home / "GoogleDrive"]),
+            ("onedrive", "OneDrive", [home / "OneDrive"]),
+        ]
+    roots = []
+    for cloud_id, label, candidates in probes:
+        for candidate in candidates:
+            if candidate.is_dir():
+                roots.append({"id": cloud_id, "label": label,
+                              "path": str(candidate)})
+                break
+    return roots
+
+
+def _validate_data_dir(target) -> pathlib.Path:
+    """Validate a proposed Markwell data directory; return it resolved.
+
+    SECURITY — this is the fence around the one exception to "nothing the
+    browser sends is used as a filesystem path": the reader's own data-dir
+    choice. The chain, in pinned order (each failure is a ValueError whose
+    short stable message doubles as an error code for the UI):
+
+      1. expanduser, then require an absolute path -> "path must be absolute"
+      2. resolve() (non-strict): symlinks are chased *before* the checks
+         below, so a link cannot smuggle the data dir into a refused place
+      3. refuse an existing file                   -> "path is a file"
+      4. refuse anything inside a mounted Kobo     -> "path is inside the
+         Kobo device". Markwell must never write to the device, so its mount
+         can never host the data dir. A candidate mount
+         (device._candidate_roots) counts only when it actually hosts a Kobo
+         database — the same probe detect_device uses — because on Windows
+         the candidates are *every* drive letter, and without that
+         confirmation every Windows path would be "inside the Kobo". On
+         macOS/Linux the candidates are name-matched KOBOeReader mounts,
+         which the database probe merely re-confirms.
+
+    The writability probe is deliberately NOT here: change_data_dir() probes
+    before committing a user's new choice, but boot-time re-validation of a
+    saved choice (resolve_data_dir) must tolerate a cloud folder that simply
+    isn't mounted *yet*.
+    """
+    path = pathlib.Path(target).expanduser()
+    if not path.is_absolute():
+        raise ValueError("path must be absolute")
+    resolved = path.resolve()
+    if resolved.is_file():
+        raise ValueError("path is a file")
+    for root in device._candidate_roots():
+        if not (root / device._REL_DB).is_file():
+            continue  # a candidate without a Kobo DB is not a device (C:\ …)
+        root_str = str(root.resolve())
+        try:
+            inside = os.path.commonpath([str(resolved), root_str]) == root_str
+        except ValueError:  # different drive (Windows): cannot be inside
+            inside = False
+        if inside:
+            raise ValueError("path is inside the Kobo device")
+    return resolved
+
+
+def resolve_data_dir(flag_value: str | None) -> pathlib.Path:
+    """The data dir the server should start with.
+
+    Precedence: an explicit --data-dir flag > the saved config choice (if it
+    still passes validation) > `default_data_dir()`. The flag is taken as-is —
+    whoever types a flag owns it, exactly like the CLI. The saved choice is
+    re-validated at every boot because the world changes between runs (a
+    folder can become a file; a saved dir can become the Kobo's mount):
+    anything invalid is IGNORED with a stderr warning, never an exception — a
+    stale config must not be able to wedge startup. No writability probe
+    here: a cloud folder may not be mounted yet at boot, and refusing to
+    start over that would lock the reader out (see _validate_data_dir).
+    """
+    if flag_value:
+        return pathlib.Path(flag_value).expanduser()
+    configured = config.load().get("data_dir")
+    if configured is not None:
+        try:
+            if not isinstance(configured, str):
+                raise ValueError("not a string")
+            return _validate_data_dir(configured)
+        except ValueError as exc:
+            print(f"markwell: ignoring saved data_dir {configured!r} ({exc}); "
+                  "using the default", file=sys.stderr)
+    return default_data_dir()
 
 
 def _parse_stamp(name: str):
@@ -316,3 +457,114 @@ class Service:
         target.mkdir(parents=True, exist_ok=True)
         _reveal(target)
         return True
+
+    # --- settings & archive ----------------------------------------------------
+
+    def change_data_dir(self, target) -> dict:
+        """Relocate the data dir to `target` by COPYING — never move or delete.
+
+        SECURITY: `target` ultimately comes from the browser — the one fenced
+        exception to "nothing the browser sends is used as a filesystem
+        path". It must pass `_validate_data_dir`'s chain, then mkdir + a
+        writability probe (either failing -> ValueError "path is not
+        writable" — mkdir failing IS a way of not being writable).
+
+        Copy-only relocation: existing snapshots (backups/KoboReader-*.sqlite)
+        and the whole output/ tree are copied over, skipping any name already
+        present at the destination — so a retry never re-copies and NEVER
+        overwrites a destination file — and the old folder is left exactly as
+        it was. The reader deletes the old copy themselves, if and when they
+        choose; Markwell has no code path that deletes user data.
+
+        Concurrency: refused while an export runs, and the directory switch
+        happens under the job lock, so a running export always sees one
+        consistent set of directories. An export that slips in *during* the
+        copy makes the final switch raise the same RuntimeError; the files
+        already copied are harmless and a retry skips them.
+        """
+        with self._lock:
+            if self._job.state == "running":
+                raise RuntimeError("export running")
+        resolved = _validate_data_dir(target)
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+            # Probe with a real file: mkdir alone can succeed where writes
+            # would fail (read-only remount, quota). Auto-removed on close.
+            with tempfile.NamedTemporaryFile(dir=str(resolved)):
+                pass
+        except OSError:
+            raise ValueError("path is not writable")
+
+        old_data = self.data_dir
+        old_backup, old_out = self.backup_dir, self.out_dir
+        new_backup, new_out = resolved / "backups", resolved / "output"
+
+        copied_snapshots = 0
+        if old_backup.is_dir():
+            new_backup.mkdir(parents=True, exist_ok=True)
+            for snap in sorted(old_backup.glob(_SNAP_GLOB)):
+                dest = new_backup / snap.name
+                if dest.exists():
+                    continue
+                shutil.copy2(snap, dest)
+                copied_snapshots += 1
+
+        copied_outputs = 0
+        if old_out.is_dir():
+            # sorted() materializes the walk BEFORE the first copy, so a
+            # target nested under the old tree can never re-discover (and
+            # endlessly re-copy) its own fresh copies.
+            for src in sorted(p for p in old_out.rglob("*") if p.is_file()):
+                dest = new_out / src.relative_to(old_out)
+                if dest.exists():
+                    continue
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+                copied_outputs += 1
+
+        with self._lock:
+            if self._job.state == "running":
+                raise RuntimeError("export running")
+            self.data_dir = resolved
+            self.backup_dir = new_backup
+            self.out_dir = new_out
+        config.save({**config.load(), "data_dir": str(resolved)})
+        return {"old": str(old_data), "new": str(resolved),
+                "copied_snapshots": copied_snapshots,
+                "copied_outputs": copied_outputs}
+
+    def make_archive(self) -> dict:
+        """Bundle the library into one ZIP for sharing or cold storage.
+
+        Contents: every file under output/ (arcname ``output/<rel>``) plus
+        the LATEST snapshot only (arcname ``backups/<name>``) — the freshest
+        complete pair, not a growing pile of history. The zip is written to
+        the data-dir ROOT, not under output/ or backups/, so the output walk
+        and the KoboReader-*.sqlite glob can never sweep an old archive into
+        a new one. Read-only with respect to user data: sources are only
+        read, never moved or deleted.
+        """
+        with self._lock:
+            if self._job.state == "running":
+                raise RuntimeError("export running")
+        snaps = self._snapshots()
+        latest = snaps[-1] if snaps else None
+        out_files = []
+        if self.out_dir.is_dir():
+            out_files = sorted(p for p in self.out_dir.rglob("*")
+                               if p.is_file())
+        if latest is None and not out_files:
+            raise ValueError("nothing to archive")
+        stamp = datetime.datetime.now().strftime(_STAMP_FMT)
+        name = f"Markwell-archive-{stamp}.zip"
+        path = self.data_dir / name
+        files = 0
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for src in out_files:
+                zf.write(src,
+                         "output/" + src.relative_to(self.out_dir).as_posix())
+                files += 1
+            if latest is not None:
+                zf.write(latest, "backups/" + latest.name)
+                files += 1
+        return {"name": name, "path": str(path), "files": files}
