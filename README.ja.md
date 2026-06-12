@@ -118,6 +118,8 @@ markwell-gui          # または:  python3 -m markwell.gui
 タイポグラフィ、オン／オフできる透かし。カードはローカルのキャンバスで
 描かれ、何ひとつあなたのマシンの外へは出ません。
 
+![振り返り画面：毎日一句、あなた自身のハイライトから](docs/screenshots/11-review.png)
+
 ![本のページ：ハイライトが読書順に並び、メモがその下に](docs/screenshots/04-book-detail.png)
 
 ## あなたのデータを、あなたの言語で

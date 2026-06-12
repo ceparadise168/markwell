@@ -105,6 +105,8 @@ markwell-gui          # 或：python3 -m markwell.gui
 **分享圖卡**：三種尺寸、三種樣式的圖片，排版顧及中日韓文字，浮水印可開可關。
 圖卡完全在本機的畫布上繪製，什麼都不會離開你的電腦。
 
+![複習畫面：每天一句，從你自己的劃線裡回來](docs/screenshots/11-review.png)
+
 ![書籍頁面：劃線依閱讀順序排列，筆記就在下方](docs/screenshots/04-book-detail.png)
 
 ## 你的資料，你的語言

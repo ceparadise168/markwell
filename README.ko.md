@@ -119,6 +119,8 @@ markwell-gui          # 또는:  python3 -m markwell.gui
 켜고 끌 수 있는 워터마크. 카드는 로컬 캔버스에서 그려지며, 아무것도 컴퓨터
 밖으로 나가지 않습니다.
 
+![복습 화면: 매일 한 구절, 내 하이라이트에서 돌아옵니다](docs/screenshots/11-review.png)
+
 ![책 화면: 하이라이트가 읽은 순서대로, 메모가 바로 아래에](docs/screenshots/04-book-detail.png)
 
 ## 내 데이터, 내 언어로

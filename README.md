@@ -115,6 +115,8 @@ want more. And any highlight can become a **share card**: an image in three
 sizes and three styles, with CJK-aware typography and an optional watermark.
 Cards are drawn on a local canvas; nothing leaves your machine.
 
+![The Review view: one line a day, returning from your own highlights](docs/screenshots/11-review.png)
+
 ![A book's highlights in reading order, with your notes beneath](docs/screenshots/04-book-detail.png)
 
 ## Your data, your languages
