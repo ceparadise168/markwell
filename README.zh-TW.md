@@ -54,6 +54,19 @@ markwell                 # 命令列工具
 markwell-gui             # 與桌面版下載相同的 App
 ```
 
+### 解除安裝
+
+不喜歡嗎？隨時都能移除——Markwell 不會在背景安裝任何東西：沒有常駐服務、
+不需要帳號、不寫入登錄檔，也從不連線。
+
+- **macOS / Windows** — 把（解壓縮出來的）**Markwell** App 拖到垃圾桶或資源
+  回收筒就好，不會留下任何殘留。
+- **Python 套件** — `pipx uninstall markwell`（或 `pip uninstall markwell`）。
+
+你的書櫃與副本存放在另一個資料夾（預設 `~/Markwell`，可在**設定**中看到），
+解除安裝完全不會碰到它們。想清得乾乾淨淨？把那個資料夾、連同存放設定的
+`~/.markwell/` 一併刪除即可——兩個都是完全由你掌握的普通資料夾。
+
 ## 為什麼選 Markwell
 
 劃線與筆記，是你的閱讀裡無可取代的部分。Markwell：
@@ -218,7 +231,7 @@ pytest
 ## 維護者
 
 由 Eric Tu（[@ceparadise168](https://github.com/ceparadise168)）打造與維護——
-ceparadise168@gmail.com。Markwell 是免費軟體，目前不接受捐款——如果它幫你
+hi@markwell.page。Markwell 是免費軟體，目前不接受捐款——如果它幫你
 留住了你的閱讀，歡迎給專案一顆星，或分享一張劃線圖卡。
 
 ## 致謝

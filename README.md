@@ -58,6 +58,21 @@ markwell                 # the command-line tool
 markwell-gui             # the same app the desktop download runs
 ```
 
+### Uninstall
+
+Don't like it? Remove it any time — Markwell installs nothing in the
+background: no service, no account, no registry entries, and never a network
+connection.
+
+- **macOS / Windows** — move **Markwell** (the app you unzipped) to the Trash
+  or Recycle Bin. Nothing is left behind.
+- **Python package** — `pipx uninstall markwell` (or `pip uninstall markwell`).
+
+Your library and snapshots live in a separate folder (`~/Markwell` by default,
+shown under **Settings**), so uninstalling never touches them. Want a clean
+sweep? Delete that folder, plus the small settings folder `~/.markwell/` —
+both are ordinary folders you fully control.
+
 ## Why
 
 Your highlights and notes are the irreplaceable part of your reading. Markwell:
@@ -265,7 +280,7 @@ rules, [CHANGELOG.md](CHANGELOG.md) for what's changed, and
 ## Maintainer
 
 Built and maintained by Eric Tu ([@ceparadise168](https://github.com/ceparadise168))
-— ceparadise168@gmail.com. Markwell is free, with no donations accepted for now —
+— hi@markwell.page. Markwell is free, with no donations accepted for now —
 if it helped you preserve your reading, star the repo and share a quote card.
 
 ## Acknowledgments

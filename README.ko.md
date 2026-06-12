@@ -59,6 +59,21 @@ markwell                 # 명령줄 도구
 markwell-gui             # 데스크톱 다운로드와 같은 앱
 ```
 
+### 제거하기
+
+마음에 들지 않으면 언제든 지울 수 있습니다. Markwell은 백그라운드에 아무것도
+설치하지 않습니다. 상주 서비스도, 계정도, 레지스트리 기록도, 네트워크 연결도
+전혀 없습니다.
+
+- **macOS / Windows** — (압축을 푼) **Markwell** 앱을 휴지통으로 옮기기만 하면
+  됩니다. 남는 것은 아무것도 없습니다.
+- **Python 패키지** — `pipx uninstall markwell`(또는 `pip uninstall markwell`).
+
+서재와 저장 사본은 별도의 폴더(기본값 `~/Markwell`, **설정**에서 확인 가능)에
+있으므로 제거해도 건드리지 않습니다. 말끔히 지우고 싶다면 그 폴더와 설정이
+담긴 `~/.markwell/` 폴더도 함께 삭제하세요. 둘 다 온전히 내가 관리하는 평범한
+폴더입니다.
+
 ## 왜 Markwell인가
 
 하이라이트와 메모는 독서에서 무엇과도 바꿀 수 없는 부분입니다. Markwell은:
@@ -241,7 +256,7 @@ pytest
 ## 메인테이너
 
 Eric Tu([@ceparadise168](https://github.com/ceparadise168))가 만들고
-관리합니다 — ceparadise168@gmail.com. Markwell은 무료이며 당분간 후원을 받지
+관리합니다 — hi@markwell.page. Markwell은 무료이며 당분간 후원을 받지
 않습니다. 당신의 독서를 간직하는 데 도움이 되었다면, 리포지터리에 별을
 남기거나 인용 카드를 공유해 주세요.
 
