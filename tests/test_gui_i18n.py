@@ -44,7 +44,7 @@ def test_locales_present_and_keys_in_parity():
 def test_every_t_key_used_in_js_exists_in_en():
     d = _dicts()
     used = set()
-    for name in ("app.js", "i18n.js"):
+    for name in ("app.js", "i18n.js", "cards.js"):
         src = (ASSETS / name).read_text(encoding="utf-8")
         used |= set(re.findall(r"""(?<![\w.])t\(\s*["']([\w.-]+)["']""", src))
         # nphrase("x_one", "x_many", n) picks its key at runtime — harvest both
@@ -122,9 +122,13 @@ def test_every_data_i18n_key_in_index_html_exists_in_en():
 
 def test_index_html_wires_switcher_and_loads_i18n_before_app_js():
     html = (ASSETS / "index.html").read_text(encoding="utf-8")
-    # the applier + switcher wiring live in i18n.js; app.js assumes its globals
-    assert html.index('src="i18n.js"') < html.index('src="app.js"')
+    # the applier + switcher wiring live in i18n.js; cards.js calls t() and
+    # app.js calls openCardModal() — so the order must be i18n < cards < app
+    assert (html.index('src="i18n.js"') < html.index('src="cards.js"')
+            < html.index('src="app.js"'))
     assert 'id="locale-select"' in html
+    # cards.js renders its modal into this mount point
+    assert 'id="card-modal-root"' in html
 
 
 # ---- served asset (mirrors the /app.js static route) --------------------------
@@ -152,3 +156,16 @@ def test_i18n_js_served_without_token(live):
     assert resp.status == 200
     assert ctype == "application/javascript; charset=utf-8"
     assert "const I18N =" in body
+
+
+def test_cards_js_served_without_token(live):
+    _httpd, port = live
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+    conn.request("GET", "/cards.js")  # public static route: no token header
+    resp = conn.getresponse()
+    body = resp.read().decode("utf-8")
+    ctype = resp.getheader("Content-Type")
+    conn.close()
+    assert resp.status == 200
+    assert ctype == "application/javascript; charset=utf-8"
+    assert "function drawCard" in body

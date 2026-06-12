@@ -223,6 +223,7 @@ const ICON = {
   down: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v12m0 0 5-5m-5 5-5-5M5 18v1a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1"/></svg>',
   refresh: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 1 0-.5 4M20 5v5h-5"/></svg>',
   clock: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>',
+  share: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V4m0 0 5 5m-5-5-5 5M5 18v1a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1"/></svg>',
 };
 
 let heartbeatTimer;
@@ -1276,6 +1277,7 @@ async function renderReview() {
       <div id="review-swap"></div>
       <div class="btn-row center review-actions">
         <button class="btn" id="review-copy" type="button" aria-label="${esc(t("book.copy_aria"))}">${ICON.copy}<span>${esc(t("book.copy"))}</span></button>
+        <button class="btn" id="review-share" type="button">${ICON.share}<span>${esc(t("review.share"))}</span></button>
         <button class="btn" id="review-open" type="button">${ICON.book}<span>${esc(t("review.read_in_book"))}</span></button>
         <button class="btn" id="review-another" type="button">${ICON.refresh}<span>${esc(t("review.another"))}</span></button>
       </div>
@@ -1298,6 +1300,12 @@ async function renderReview() {
   copyBtn.onclick = () => {
     const h = review.pick;
     if (h) copyText(copyPayload(h.text, h.bookTitle), () => copiedFeedback(copyBtn));
+  };
+  // share-card modal (cards.js, loaded before this file): the flat entry
+  // carries text/note/date/bookTitle; the book object adds the author
+  document.getElementById("review-share").onclick = () => {
+    const h = review.pick;
+    if (h) openCardModal(h, ((state.lib && state.lib.books) || [])[h.bookIdx] || {});
   };
   document.getElementById("review-open").onclick = () => {
     const h = review.pick;

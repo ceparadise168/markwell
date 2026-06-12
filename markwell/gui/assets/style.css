@@ -694,6 +694,66 @@ html:not(.is-dark) .ico-moon { display: inline-flex; }
   max-width: 90vw;
 }
 
+/* ---- share-card modal (cards.js) ----
+   The dialog chrome follows the app theme via tokens; the canvas inside paints
+   its own fixed palettes (see cards.js CARD_STYLES) so an exported card looks
+   identical from either theme. z-index sits BELOW the toast (60): copy/download
+   feedback must surface above the open modal. Entrance animations are tiny
+   keyframes, so the prefers-reduced-motion block at file end neutralises them. */
+.card-modal {
+  position: fixed; inset: 0; z-index: 59;
+  display: flex; align-items: center; justify-content: center;
+  padding: 18px;
+  background: rgba(21, 17, 12, .52);
+  animation: card-fade var(--dur-fast) var(--ease-out);
+}
+@keyframes card-fade { from { opacity: 0; } }
+.card-dialog {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r); box-shadow: var(--shadow);
+  width: min(560px, 100%); max-height: calc(100vh - 36px);
+  overflow: auto; padding: 20px 22px 22px;
+  animation: card-rise var(--dur-mid) var(--ease-out);
+}
+@keyframes card-rise { from { opacity: 0; transform: translateY(14px); } }
+.card-dialog-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.card-dialog-head h2 { font-size: 1.18rem; margin: 0; flex: 1; }
+.card-close {
+  width: 34px; height: 34px; flex: none;
+  display: grid; place-items: center; cursor: pointer;
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  color: var(--ink-faint); background: transparent;
+}
+.card-close:hover { color: var(--ink); background: var(--surface-2); border-color: var(--line); }
+.card-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor;
+  stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.card-preview {
+  display: grid; place-items: center; padding: 16px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+/* drawn at full export resolution, scaled down here — stays crisp on any dpr */
+.card-preview canvas { max-width: 100%; max-height: 44vh; width: auto; height: auto;
+  border-radius: 4px; box-shadow: var(--shadow-sm); }
+.card-hint { margin: 10px 2px 0; font-size: .82rem; color: var(--ink-faint); }
+.card-controls { display: flex; flex-wrap: wrap; gap: 10px 12px; margin: 16px 0 0; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface-2); }
+.seg button {
+  font: inherit; font-size: .85rem; font-weight: 550; color: var(--ink-soft);
+  background: transparent; border: 0; border-radius: 999px; padding: 6px 13px;
+  cursor: pointer; transition: background var(--dur-fast), color var(--dur-fast);
+}
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--accent-ink);
+  font-weight: 650; box-shadow: var(--shadow-sm); }
+.card-toggles { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 2px 0; }
+.card-toggle { display: inline-flex; gap: 8px; align-items: center;
+  font-size: .88rem; color: var(--ink-soft); cursor: pointer; }
+.card-toggle input { width: 15px; height: 15px; margin: 0; flex: none;
+  accent-color: var(--accent); cursor: pointer; }
+.card-actions { margin-top: 16px; }
+
 /* ---- responsive ---- */
 @media (max-width: 820px) {
   .app { flex-direction: column; }

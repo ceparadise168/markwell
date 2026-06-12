@@ -349,6 +349,7 @@ def test_static_and_unknown_routes(live):
     httpd, port = live
     assert _get(port, "/style.css")[0] == 200
     assert _get(port, "/app.js")[0] == 200
+    assert _get(port, "/cards.js")[0] == 200
     assert _get(port, "/api/nope", token=httpd.token)[0] == 404
 
 

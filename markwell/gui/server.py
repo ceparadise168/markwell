@@ -44,6 +44,7 @@ _STATIC = {
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
     "/i18n.js": ("i18n.js", "application/javascript; charset=utf-8"),
+    "/cards.js": ("cards.js", "application/javascript; charset=utf-8"),
 }
 
 

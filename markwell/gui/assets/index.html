@@ -79,9 +79,15 @@
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19V6"/><path d="m5 12 7-7 7 7"/></svg>
   </button>
 
+  <!-- share-card modal mounts here (cards.js owns everything inside) -->
+  <div id="card-modal-root"></div>
+
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
+  <!-- order matters: i18n.js defines t(); cards.js defines openCardModal();
+       app.js calls into both. All three are classic scripts sharing globals. -->
   <script src="i18n.js" defer></script>
+  <script src="cards.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>
