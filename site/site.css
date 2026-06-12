@@ -209,7 +209,7 @@ section h2 { font-size: 1.6rem; text-align: center; margin: 0 0 12px; }
   text-align: center; color: var(--ink-soft);
   max-width: 56ch; margin: 0 auto 28px;
 }
-.features, .firstlaunch, .yours { margin-top: clamp(56px, 10vw, 96px); }
+.features, .firstlaunch, .uninstall, .yours { margin-top: clamp(56px, 10vw, 96px); }
 
 /* ---- six quiet cards ---- */
 .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 30px; }
@@ -235,9 +235,10 @@ details[open] > summary { border-bottom: 1px solid var(--line); }
 .details-body strong { color: var(--ink); font-weight: 650; }
 .fallback-line { margin: 20px 0 0; text-align: center; color: var(--ink-faint); font-size: .9rem; }
 
-/* ---- your data stays yours ---- */
-.yours { text-align: center; }
-.yours p { margin: 0 auto; max-width: 58ch; color: var(--ink-soft); line-height: 1.75; }
+/* ---- remove it any time · your data stays yours ---- */
+.uninstall, .yours { text-align: center; }
+.uninstall p, .yours p { margin: 0 auto; max-width: 58ch; color: var(--ink-soft); line-height: 1.75; }
+.uninstall p + p { margin-top: 14px; }
 .yours a { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ---- ornament + footer ---- */

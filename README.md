@@ -58,6 +58,20 @@ markwell                 # the command-line tool
 markwell-gui             # the same app the desktop download runs
 ```
 
+### Uninstall
+
+Don't like it? Remove it any time — Markwell installs nothing in the
+background: no service, no account, no registry entries, and never a network
+connection.
+
+- **macOS / Windows** — move **Markwell** (the app you unzipped) to the Trash
+  or Recycle Bin. Nothing is left behind.
+- **Python package** — `pipx uninstall markwell` (or `pip uninstall markwell`).
+
+Your library and snapshots live in a separate folder (`~/Markwell` by default,
+shown under **Settings**), so uninstalling never touches them. Want a clean
+sweep? Delete that folder too — it's an ordinary folder you fully control.
+
 ## Why
 
 Your highlights and notes are the irreplaceable part of your reading. Markwell:
