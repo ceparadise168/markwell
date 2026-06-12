@@ -13,7 +13,10 @@ drivable by other processes or web pages):
   * no CORS headers are sent (browsers block cross-origin reads);
   * a strict Content-Security-Policy backs up the (escaped) rendering of
     untrusted book text;
-  * nothing the browser sends is ever used as a filesystem path or shell input.
+  * nothing the browser sends is ever used as a filesystem path or shell input
+    — with one fenced exception: POST /api/settings/data-dir accepts a path
+    for choice=custom only, fully validated by the service layer's data-dir
+    fence; every known choice (home, cloud ids) is resolved server-side.
 """
 from __future__ import annotations
 
@@ -31,9 +34,11 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from .. import config
 from ..export import parse_formats
 from ..reader import UnsupportedSchemaError
-from .service import Service, default_data_dir
+from .service import (Service, default_data_dir, detect_cloud_roots,
+                      resolve_data_dir)
 
 _ASSETS = pathlib.Path(__file__).parent / "assets"
 _TOKEN_PLACEHOLDER = "__MARKWELL_TOKEN__"
@@ -235,6 +240,15 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(svc.library(source))
         elif path == "/api/export/status":
             self._json(svc.export_status())
+        elif path == "/api/settings":
+            self._json({
+                "data_dir": str(svc.data_dir),
+                "backup_dir": str(svc.backup_dir),
+                "output_dir": str(svc.out_dir),
+                "config_path": str(config.config_path()),
+                "cloud_roots": detect_cloud_roots(),
+                "home": str(default_data_dir()),
+            })
         else:
             self._error(HTTPStatus.NOT_FOUND, "not found")
 
@@ -262,8 +276,47 @@ class _Handler(BaseHTTPRequestHandler):
                 self._error(HTTPStatus.BAD_REQUEST, "unknown folder")
                 return
             self._json({"ok": svc.open_folder(which)})
+        elif path == "/api/settings/data-dir":
+            self._command(self._apply_data_dir_choice, body)
+        elif path == "/api/archive":
+            self._command(svc.make_archive)
         else:
             self._error(HTTPStatus.NOT_FOUND, "not found")
+
+    def _command(self, fn, *args) -> None:
+        """Run a settings/archive command under the service layer's
+        stable-message error contract: ValueError -> 400 (the short message
+        doubles as an error code the UI translates), RuntimeError -> 409 (a
+        backup is running); success answers with the command's report dict."""
+        try:
+            self._json(fn(*args))
+        except RuntimeError as exc:
+            self._error(HTTPStatus.CONFLICT, str(exc))
+        except ValueError as exc:
+            self._error(HTTPStatus.BAD_REQUEST, str(exc))
+
+    def _apply_data_dir_choice(self, body) -> dict:
+        """Resolve the browser's data-dir choice into a target and relocate.
+
+        SECURITY: known choices never trust a browser path — "home" resolves
+        to default_data_dir() and a cloud id is looked up in a fresh
+        detect_cloud_roots() (target = that root + /Markwell). Only
+        choice=custom carries a browser-sent path, and that single fenced
+        value is fully validated by Service.change_data_dir.
+        """
+        choice = body.get("choice")
+        if choice == "custom":
+            target = body.get("path")  # the one fenced browser-supplied path
+            if not isinstance(target, str):
+                raise ValueError("path required")
+        elif choice == "home":
+            target = default_data_dir()
+        else:
+            matches = [r for r in detect_cloud_roots() if r["id"] == choice]
+            if not matches:
+                raise ValueError("unknown choice")
+            target = pathlib.Path(matches[0]["path"]) / "Markwell"
+        return self.server.service.change_data_dir(target)
 
     # -- static ----------------------------------------------------------------
 
@@ -303,13 +356,21 @@ def _start_idle_monitor(httpd: MarkwellHTTPServer, interval: float = 1.0) -> Non
     threading.Thread(target=monitor, daemon=True).start()
 
 
+def _service_from_args(args) -> Service:
+    """The Service main() serves. An explicit --data-dir beats the saved
+    Settings choice beats ~/Markwell; resolve_data_dir owns that precedence
+    (re-validating the saved choice and warning + falling back on stderr
+    rather than refusing to start)."""
+    return Service(resolve_data_dir(args.data_dir), fmt=args.format)
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(
         prog="markwell-gui",
         description="Open the Markwell app in your web browser.")
-    ap.add_argument("--data-dir", default=str(default_data_dir()),
-                    help="where backups and exports are kept "
-                         "(default: ~/Markwell)")
+    ap.add_argument("--data-dir", default=None,
+                    help="where backups and exports are kept (default: the "
+                         "folder chosen in Settings, else ~/Markwell)")
     ap.add_argument("--format", default="md,json,html", metavar="SPEC",
                     help="what to export: md,json,csv,anki,html — one id, "
                          "a comma list, or all (default: md,json,html)")
@@ -327,7 +388,7 @@ def main(argv=None) -> None:
         print(e, file=sys.stderr)
         sys.exit(2)
 
-    service = Service(args.data_dir, fmt=args.format)
+    service = _service_from_args(args)
     httpd = build_server(service, port=args.port, desktop=args.desktop)
     url = "http://127.0.0.1:%d/" % httpd.server_address[1]
 
