@@ -96,3 +96,10 @@ def test_html_chapter_ornament_marks_changes_only():
     assert first.count("── ch.1 ──") == 1
     assert first.count("── ch.2 ──") == 1
     assert doc.count("── ch.") == 3              # + one for book 2's chapter 1
+
+
+def test_html_empty_library_is_valid_and_tocless():
+    doc = _doc([])
+    assert doc.startswith("<!DOCTYPE html>") and doc.rstrip().endswith("</html>")
+    assert "<nav>" not in doc          # no TOC when there are no books
+    assert "<main>" in doc             # body still well-formed

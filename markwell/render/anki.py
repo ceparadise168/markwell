@@ -6,7 +6,7 @@ from ..model import Book
 _EM_DASH = "—"
 
 
-def _field(s):
+def _field(s: str) -> str:
     """Replace tabs so a field can't split its row.
 
     reader._clean() already collapses all whitespace upstream, so tabs can't
