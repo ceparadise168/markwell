@@ -1,0 +1,278 @@
+/* Markwell landing site — the front door, set like a printed flyleaf of the app.
+   Same paper, ink, and teal as the product (gui/assets/style.css §:root, mirrored
+   the same way render/html.py ports them to a standalone artifact), so the site
+   reads as page one of the library. Discipline, as everywhere in Markwell:
+   no scripts, no external resources, system font stacks only — every asset is
+   served from this folder (see _headers: default-src 'none'). Light tokens,
+   then dark via prefers-color-scheme; the print block stays LAST in source so
+   its black-on-white tokens win when printing from a dark-mode browser. */
+:root {
+  color-scheme: light dark;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", "PingFang TC", "PingFang SC", "Microsoft JhengHei",
+    "Noto Sans CJK TC", sans-serif;
+  --font-read: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
+    "Songti TC", "Songti SC", "Noto Serif CJK TC", "Source Han Serif", serif;
+
+  --bg: #faf8f3;
+  --surface: #ffffff;
+  --surface-2: #f3efe7;
+  --ink: #221f1b;
+  --ink-soft: #57514a;
+  --ink-faint: #6f685e;
+  --line: #e8e1d5;
+  --accent: #2e7d6b;
+  --accent-ink: #205a4d;
+  --accent-soft: #e4f0ec;
+  --shadow-sm: 0 1px 2px rgba(40, 33, 22, .05);
+  --shadow: 0 1px 2px rgba(40, 33, 22, .05), 0 10px 30px rgba(40, 33, 22, .07);
+  --r: 14px;
+  --r-sm: 9px;
+
+  /* green highlighter ink — the product's own mark, swept across the headline
+     (gui/assets/style.css .marker-em). Flips with the theme. */
+  --marker: rgba(46, 125, 107, .22);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15130f;
+    --surface: #201d18;
+    --surface-2: #1a1713;
+    --ink: #ece6dc;
+    --ink-soft: #b7afa3;
+    --ink-faint: #9a9286;
+    --line: #322c24;
+    --accent: #1a7d6a;
+    --accent-ink: #8ad6c4;
+    --accent-soft: #1d2a26;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 34px rgba(0, 0, 0, .4);
+    --marker: rgba(138, 214, 196, .20);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--bg);
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-read);
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -.01em;
+  text-wrap: balance;
+}
+
+a { color: var(--accent-ink); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: .92em;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+figure { margin: 0; }
+
+/* the headline carries the product's own highlighter sweep — ink on the lower
+   40% of the line, like a marker (same recipe as the app's .marker-em) */
+mark {
+  background: linear-gradient(transparent 60%, var(--marker) 60%);
+  color: inherit;
+  padding: 0 .04em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.skip-link {
+  position: absolute; left: 12px; top: -48px; z-index: 50;
+  background: var(--accent); color: #fff; padding: 8px 14px;
+  border-radius: var(--r-sm); transition: top .15s;
+}
+.skip-link:focus { top: 12px; }
+
+:focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+[tabindex="-1"]:focus-visible { outline: none; }
+
+/* ---- measure ---- */
+.wrap { max-width: 880px; margin-inline: auto; padding-inline: clamp(18px, 4vw, 32px); }
+.wrap-narrow { max-width: 680px; margin-inline: auto; padding-inline: clamp(18px, 4vw, 32px); }
+
+/* ---- top bar: the language switcher, always in the same corner ---- */
+.top {
+  max-width: 1100px; margin-inline: auto;
+  display: flex; justify-content: flex-end;
+  padding: 20px clamp(18px, 4vw, 32px) 0;
+}
+.langs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 18px; font-size: .88rem; }
+.langs a { color: var(--ink-soft); }
+.langs a:hover { color: var(--accent-ink); }
+.langs strong { color: var(--ink); font-weight: 650; }
+
+/* ---- hero: a frontispiece — fleuron, wordmark, motto, headline ---- */
+.hero { text-align: center; padding-top: clamp(44px, 8vw, 84px); }
+.fleuron {
+  margin: 0 0 10px; color: var(--accent);
+  font-family: var(--font-read); font-size: 1.7rem; line-height: 1;
+}
+.wordmark {
+  margin: 0 0 14px; color: var(--ink);
+  font-weight: 650; font-size: .95rem;
+  letter-spacing: .34em; text-indent: .34em; /* re-center: tracking trails the last glyph */
+  text-transform: uppercase;
+}
+.motto {
+  margin: 0 0 22px; color: var(--ink-faint);
+  font-family: var(--font-read); font-style: italic; font-size: 1.05rem;
+}
+.hero h1 {
+  font-size: clamp(2.05rem, 5.4vw, 3.1rem);
+  margin: 0 auto 18px; max-width: 17em;
+}
+.promise {
+  color: var(--ink-soft); font-size: 1.08rem; line-height: 1.7;
+  max-width: 54ch; margin: 0 auto 26px;
+}
+
+.trust {
+  list-style: none; margin: 0 0 34px; padding: 0;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+}
+.trust li {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 15px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  font-size: .85rem; font-weight: 550; color: var(--ink-soft);
+}
+.trust li::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); flex: none;
+}
+
+.dl { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 0 0 16px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  font: inherit; font-weight: 600; font-size: 1.05rem; text-decoration: none;
+  padding: 15px 26px; border-radius: 12px;
+  background: var(--accent); border: 1px solid var(--accent); color: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: background .13s, border-color .13s, transform .05s;
+}
+.btn:hover { background: var(--accent-ink); border-color: var(--accent-ink); text-decoration: none; }
+.btn:active { transform: translateY(1px); }
+.btn svg {
+  width: 19px; height: 19px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.9;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.dl-hint { margin: 0 0 10px; color: var(--ink-faint); font-size: .9rem; }
+.cmdline { margin: 0; color: var(--ink-faint); font-size: .9rem; }
+
+/* ---- screenshots in a calm frame ---- */
+.shot { margin-top: clamp(36px, 6vw, 56px); }
+.shot .frame {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r); padding: clamp(8px, 1.6vw, 14px);
+  box-shadow: var(--shadow);
+}
+.shot img { display: block; width: 100%; height: auto; border-radius: 8px; }
+.shot figcaption {
+  margin-top: 12px; text-align: center;
+  color: var(--ink-faint); font-size: .85rem; font-style: italic;
+}
+
+/* ---- sections ---- */
+section h2 { font-size: 1.6rem; text-align: center; margin: 0 0 12px; }
+.section-sub {
+  text-align: center; color: var(--ink-soft);
+  max-width: 56ch; margin: 0 auto 28px;
+}
+.features, .firstlaunch, .yours { margin-top: clamp(56px, 10vw, 96px); }
+
+/* ---- six quiet cards ---- */
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 30px; }
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 20px 20px 22px;
+  box-shadow: var(--shadow-sm);
+}
+.card h3 { font-size: 1.04rem; margin: 0 0 8px; }
+.card h3::before { content: "❊"; color: var(--accent); font-weight: 400; margin-right: .45em; }
+.card p { margin: 0; color: var(--ink-soft); font-size: .95rem; line-height: 1.65; }
+
+/* ---- first launch (unsigned downloads) ---- */
+details {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-sm); margin-top: 12px;
+}
+summary { padding: 14px 18px; cursor: pointer; font-weight: 650; }
+summary::marker { color: var(--accent); }
+details[open] > summary { border-bottom: 1px solid var(--line); }
+.details-body { padding: 14px 18px 6px; color: var(--ink-soft); font-size: .95rem; line-height: 1.7; }
+.details-body p { margin: 0 0 12px; }
+.details-body strong { color: var(--ink); font-weight: 650; }
+.fallback-line { margin: 20px 0 0; text-align: center; color: var(--ink-faint); font-size: .9rem; }
+
+/* ---- your data stays yours ---- */
+.yours { text-align: center; }
+.yours p { margin: 0 auto; max-width: 58ch; color: var(--ink-soft); line-height: 1.75; }
+.yours a { text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---- ornament + footer ---- */
+.orn {
+  margin: clamp(56px, 10vw, 96px) 0 0; text-align: center;
+  color: var(--accent); font-family: var(--font-read); font-size: 1.05rem;
+}
+.site-foot { padding: 24px 0 48px; text-align: center; }
+.site-foot p {
+  margin: 0; padding-inline: clamp(18px, 4vw, 32px);
+  color: var(--ink-faint); font-size: .85rem; line-height: 2;
+}
+.site-foot a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.site-foot a:hover { color: var(--accent-ink); }
+
+/* ---- one breakpoint: hand-sized screens ---- */
+@media (max-width: 720px) {
+  .cards { grid-template-columns: 1fr; }
+  .dl { flex-direction: column; align-items: stretch; max-width: 320px; margin-inline: auto; }
+  .top { justify-content: center; }
+  .langs { justify-content: center; }
+}
+
+/* ---- paper edition — black on white; backgrounds don't print, borders do.
+   Stays last in source: when printing from a dark browser both media queries
+   match, and source order must let these tokens win. ---- */
+@media print {
+  :root {
+    --bg: #fff; --surface: #fff; --surface-2: #fff;
+    --ink: #000; --ink-soft: #333; --ink-faint: #555;
+    --line: #999; --accent: #000; --accent-ink: #000; --accent-soft: #fff;
+    --marker: transparent; --shadow: none; --shadow-sm: none;
+  }
+  body { font-size: 11.5pt; }
+  .skip-link { display: none; }
+  .btn { background: none; color: #000; border-color: #999; }
+  a { color: #000; }
+}
