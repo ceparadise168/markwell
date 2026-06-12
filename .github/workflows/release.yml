@@ -1,0 +1,100 @@
+# Tag-triggered desktop release: build → privacy preflight (hard gate) → draft release.
+#
+# Artifact names are a public contract — the landing site links
+# /releases/latest/download/Markwell-macOS.zip and …/Markwell-Windows.zip.
+# Do not rename them (see packaging/README.md, "Releases").
+#
+# workflow_dispatch on a branch builds and uploads workflow artifacts for
+# inspection; the draft release itself is only created when the ref is a v* tag.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.slug }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            slug: macOS
+          - os: windows-latest
+            slug: Windows
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install release tools
+        run: pip install -e ".[release]"
+
+      - name: Build the desktop app
+        run: pyinstaller packaging/pyinstaller/markwell-desktop.spec --clean --noconfirm
+
+      # HARD GATE: exit 1 (private data found) fails the job before anything is
+      # zipped or uploaded. Runs in bash on both platforms for uniform exit-code
+      # semantics. Scans the whole dist/ tree (onedir + .app on macOS).
+      - name: Privacy preflight (hard gate)
+        shell: bash
+        run: python packaging/preflight.py dist
+
+      # The spec's BUNDLE step produces dist/Markwell.app on macOS; ship the .app.
+      # ditto preserves symlinks, resource forks, and execute bits — required for
+      # a .app zip that survives extraction.
+      - name: Package (macOS app bundle)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent dist/Markwell.app Markwell-macOS.zip
+
+      # On Windows the spec's COLLECT step produces the onedir folder
+      # dist/Markwell (Markwell.exe inside); zip the folder so it extracts
+      # as Markwell/.
+      - name: Package (Windows onedir)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/Markwell -DestinationPath Markwell-Windows.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Markwell-${{ matrix.slug }}
+          path: Markwell-${{ matrix.slug }}.zip
+          if-no-files-found: error
+
+  # Single job attaches both zips, so two parallel builds can never race to
+  # create duplicate draft releases for the same tag.
+  draft-release:
+    name: Draft GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      # draft: true — Eric reviews artifacts and notes before publishing.
+      # Publishing the release is what triggers publish-pypi.yml.
+      - name: Create draft release with artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: release-assets/Markwell-*.zip

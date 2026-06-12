@@ -27,6 +27,58 @@ def test_cli_format_json_only(kobo_db, tmp_path):
     assert not (out / "index.md").exists()
 
 
+def test_cli_default_format_exports_all_five(kobo_db, tmp_path):
+    out = tmp_path / "out"
+    main(["--db", str(kobo_db), "--out", str(out),
+          "--backup-dir", str(tmp_path / "backups")])
+    for name in ("index.md", "highlights.json", "highlights.csv",
+                 "anki.tsv", "library.html"):
+        assert (out / name).is_file(), name
+
+
+def test_cli_format_comma_list_writes_those_and_prunes_the_rest(kobo_db, tmp_path):
+    out = tmp_path / "out"
+    backups = tmp_path / "backups"
+    # First run with the default ("all") leaves a json (and more) behind.
+    main(["--db", str(kobo_db), "--out", str(out), "--backup-dir", str(backups)])
+    assert (out / "highlights.json").is_file()
+
+    main(["--db", str(kobo_db), "--out", str(out), "--format", "md,csv",
+          "--backup-dir", str(backups)])
+    assert (out / "index.md").is_file()
+    assert (out / "highlights.csv").is_file()
+    # manifest behaviour (pre-existing): formats dropped from the run are pruned
+    for stale in ("highlights.json", "anki.tsv", "library.html"):
+        assert not (out / stale).exists(), stale
+
+
+def test_cli_format_bogus_exits_2_with_the_parse_message(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["--format", "bogus", "--out", str(tmp_path / "out"),
+              "--backup-dir", str(tmp_path / "backups")])
+    assert exc.value.code == 2
+    assert ("unknown format: bogus "
+            "(choose from md, json, csv, anki, html, or all)"
+            ) in capsys.readouterr().err
+
+
+def test_cli_lang_flows_through_to_markdown(kobo_db, tmp_path):
+    out = tmp_path / "out"
+    main(["--db", str(kobo_db), "--out", str(out), "--lang", "zh-TW",
+          "--backup-dir", str(tmp_path / "backups")])
+    assert "Kobo 書摘" in (out / "index.md").read_text(encoding="utf-8")
+    book_one = (out / "Book_One.md").read_text(encoding="utf-8")
+    assert "**筆記：** My own note" in book_one  # the note renders localized
+
+
+def test_cli_invalid_lang_exits_2(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["--lang", "xx", "--out", str(tmp_path / "out"),
+              "--backup-dir", str(tmp_path / "backups")])
+    assert exc.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err  # argparse rejects pre-run
+
+
 def test_cli_missing_db_exits(tmp_path):
     with pytest.raises(SystemExit):
         main(["--db", str(tmp_path / "nope.sqlite"), "--out", str(tmp_path / "o")])

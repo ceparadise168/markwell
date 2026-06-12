@@ -1,0 +1,59 @@
+name: Bug report
+description: "Something broke or behaved unexpectedly. 你可以用中文回報，沒問題。日本語でもどうぞ。한국어로 작성하셔도 됩니다."
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: markwell-version
+    attributes:
+      label: Markwell version
+      description: "Run `markwell --version`, or check the footer of the GUI."
+      placeholder: "markwell 0.2.0"
+    validations:
+      required: true
+
+  - type: input
+    id: kobo-model-firmware
+    attributes:
+      label: Kobo model and firmware version
+      description: "On the device: Settings → Device information."
+      placeholder: "Kobo Libra 2, firmware 4.41.23145"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Connect the Kobo…
+        2. Run `markwell …` / click …
+        3. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened — and what did you expect instead?
+      description: "Paste error output as text where possible (easier to search than screenshots)."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed personal data (highlight text, file paths with my name) from logs and screenshots
+          required: true

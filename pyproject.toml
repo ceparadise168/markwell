@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "markwell"
-version = "0.1.0"
-description = "Markwell — back up and export your Kobo highlights and notes to Markdown and JSON."
+version = "0.2.0"
+description = "Markwell — back up and export your Kobo highlights and notes to Markdown, JSON, CSV, Anki TSV, and HTML."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -26,9 +26,15 @@ Issues = "https://github.com/ceparadise168/markwell/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+release = ["pyinstaller>=6,<7"]
 
 [project.scripts]
 markwell = "markwell.cli:main"
+markwell-gui = "markwell.gui.server:main"
+markwell-desktop = "markwell.desktop:main"
 
 [tool.setuptools.packages.find]
 include = ["markwell*"]
+
+[tool.setuptools.package-data]
+"markwell.gui" = ["assets/*"]
