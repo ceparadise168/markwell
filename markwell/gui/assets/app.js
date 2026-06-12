@@ -686,6 +686,9 @@ function heroHTML(h) {
     </button>
     <span id="hero-hint" class="sr-only">${esc(t("hero.hint"))}</span>
     <div class="hero-meta">${heroMetaInner(h)}</div>
+    <button class="hero-share" id="hero-share" type="button" aria-label="${esc(t("book.share_aria"))}">
+      ${ICON.share}<span>${esc(t("review.share"))}</span>
+    </button>
     <button class="reshuffle" id="reshuffle" type="button" aria-label="${esc(t("hero.reshuffle_aria"))}">
       ${ICON.refresh}<span>${esc(t("hero.reshuffle"))}</span>
     </button>
@@ -724,6 +727,14 @@ function wireHero() {
   const r = document.getElementById("reshuffle");
   if (q) q.onclick = reshuffle;
   if (r) r.onclick = reshuffle;
+  // share-card modal (cards.js), same hand-off as Review: the flat entry carries
+  // text/note/date/bookTitle; the book object adds the author. _heroCur is read
+  // at click time, so the button always shares the line on screen.
+  const s = document.getElementById("hero-share");
+  if (s) s.onclick = () => {
+    const h = _heroCur;
+    if (h) openCardModal(h, ((state.lib && state.lib.books) || [])[h.bookIdx] || {});
+  };
   wireHeroBook();
 }
 
@@ -934,9 +945,9 @@ function wireCards() {
    Each highlight is a <li id="hl-{bookIdx}-{hlIdx}"> where hlIdx is the running
    index across the WHOLE book.highlights array — the exact coordinate the flat
    index (buildFlatIndex) stamps, so a hero/search click can jump straight here.
-   Per-highlight copy buttons reveal on hover/focus; the book closes on an
-   ornament + a way back. After render we wire copy, reveal, turn the reading bar
-   + FAB on, then honour any pending jump (scroll + flash). */
+   Per-highlight copy + share buttons reveal on hover/focus; the book closes on
+   an ornament + a way back. After render we wire copy + share, reveal, turn the
+   reading bar + FAB on, then honour any pending jump (scroll + flash). */
 async function renderBook(arg) {
   await loadStatus();
   const lib = await loadLibrary(resolveSource());
@@ -963,6 +974,7 @@ async function renderBook(arg) {
       <div class="hl-foot">
         ${date}
         <button class="copy" type="button" aria-label="${esc(t("book.copy_aria"))}" data-hlidx="${hlIdx}">${ICON.copy}<span>${esc(t("book.copy"))}</span></button>
+        <button class="share" type="button" aria-label="${esc(t("book.share_aria"))}" data-hlidx="${hlIdx}">${ICON.share}<span>${esc(t("review.share"))}</span></button>
       </div>
     </li>`;
   });
@@ -986,6 +998,7 @@ async function renderBook(arg) {
   </div>`;
 
   wireCopyButtons(book);
+  wireShareButtons(book);
   revealAll(view.querySelectorAll(".hl.reveal"));
   setScrollContext({ progress: true, fab: true });   // reading bar + FAB on for this view
   consumeJumpTo(bookIdx);                             // scroll + flash if we arrived via a jump
@@ -1035,6 +1048,18 @@ function wireCopyButtons(book) {
       const h = book.highlights[Number(btn.dataset.hlidx)];
       if (!h) return;
       copyText(copyPayload(h.text || "", title), () => copiedFeedback(btn));
+    };
+  });
+}
+/* Per-highlight share (same reveal pattern as copy): the highlight {text, note,
+   date} and its book {title, author} go straight to the card modal (cards.js).
+   On close the modal restores focus to this button, and .hl:focus-within keeps
+   it visible — so a keyboard reader never lands on an invisible control. */
+function wireShareButtons(book) {
+  view.querySelectorAll(".share").forEach((btn) => {
+    btn.onclick = () => {
+      const h = book.highlights[Number(btn.dataset.hlidx)];
+      if (h) openCardModal(h, book);
     };
   });
 }

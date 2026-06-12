@@ -367,15 +367,18 @@ a { color: inherit; }
 .hero-book:hover { border-bottom-color: var(--accent); }
 .hero-sep { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-faint); flex: none; }
 .hero-date { font-style: italic; font-size: .88rem; color: var(--ink-faint); }
-.reshuffle { margin-top: 22px; display: inline-flex; align-items: center; gap: 8px;
+/* one pill for both hero actions — share (this line) before reshuffle (move on),
+   the same act-on-it-then-advance order as the Review action row */
+.reshuffle, .hero-share { margin-top: 22px; display: inline-flex; align-items: center; gap: 8px;
   font: inherit; font-size: .85rem; font-weight: 600; color: var(--ink-soft);
   background: var(--surface); border: 1px solid var(--line); padding: 9px 18px;
   border-radius: 999px; cursor: pointer; box-shadow: var(--shadow-sm);
   transition: color var(--dur-fast), border-color var(--dur-fast),
               transform var(--dur-fast) var(--ease-spring); }
-.reshuffle:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-1px); }
-.reshuffle:active { transform: scale(.97); }
-.reshuffle svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.9;
+.hero-share { margin-right: 8px; }   /* breathing room before its reshuffle neighbour */
+.reshuffle:hover, .hero-share:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-1px); }
+.reshuffle:active, .hero-share:active { transform: scale(.97); }
+.reshuffle svg, .hero-share svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.9;
   stroke-linecap: round; stroke-linejoin: round; }
 
 /* green highlighter sweep — ink sits on the lower 40% of the line, like a marker.
@@ -437,31 +440,35 @@ mark { background: var(--marker-strong); color: var(--ink); padding: 0 .08em; bo
   background: var(--surface-2); font-size: .96rem; color: var(--ink-soft); }
 .hl .note b, .review-card .note b { color: var(--ink); font-weight: 650; }
 
-/* foot row: date (when present, pushed left) + copy button (always right).
-   margin-right:auto on the date keeps the button right-aligned whether or not a
+/* foot row: date (when present, pushed left) + copy/share buttons (always right).
+   margin-right:auto on the date keeps the buttons right-aligned whether or not a
    date is there — no empty-placeholder hack and no space-between juggling. */
 .hl-foot { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
 .hl .date { font-size: .82rem; color: var(--ink-faint); font-style: italic; margin-right: auto; }
 
-.copy {
+.copy, .share {
   flex: none; display: inline-flex; align-items: center; gap: 6px;
-  margin-left: auto;                               /* right-align even when no date precedes it */
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-faint);
   font: inherit; font-size: .78rem; font-weight: 600; padding: 5px 11px;
   border-radius: var(--r-sm); cursor: pointer; opacity: 0;
   transition: opacity var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast),
               background var(--dur-fast), transform var(--dur-fast);
 }
+/* only the FIRST action takes the auto margin: it right-aligns the whole pair
+   even when no date precedes it, and .share then rides at gap distance (a
+   second auto margin would split the free space and strand .copy mid-row) */
+.copy { margin-left: auto; }
 /* reveal on hover OR keyboard focus — without :focus-within / :focus-visible a
    keyboard user could tab to an opacity:0 button they can't see (it's still in
    the tab order; these rules just make it visible once focused) */
-.hl:hover .copy, .hl:focus-within .copy, .copy:focus-visible { opacity: 1; }
-.copy:hover { color: var(--accent); border-color: var(--accent); background: var(--surface-2); }
-.copy:active { transform: scale(.95); }
+.hl:hover .copy, .hl:focus-within .copy, .copy:focus-visible,
+.hl:hover .share, .hl:focus-within .share, .share:focus-visible { opacity: 1; }
+.copy:hover, .share:hover { color: var(--accent); border-color: var(--accent); background: var(--surface-2); }
+.copy:active, .share:active { transform: scale(.95); }
 .copy.done { color: var(--accent); border-color: var(--accent); opacity: 1; }
-.copy svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.9;
+.copy svg, .share svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.9;
   stroke-linecap: round; stroke-linejoin: round; }
-@media (hover: none) { .copy { opacity: .6; } }   /* touch: no hover, keep it faintly visible */
+@media (hover: none) { .copy, .share { opacity: .6; } }   /* touch: no hover, keep them faintly visible */
 
 /* a warm close to each book */
 .book-end { text-align: center; padding: clamp(36px, 6vw, 56px) 0 24px; }
