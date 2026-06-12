@@ -70,7 +70,8 @@ connection.
 
 Your library and snapshots live in a separate folder (`~/Markwell` by default,
 shown under **Settings**), so uninstalling never touches them. Want a clean
-sweep? Delete that folder too — it's an ordinary folder you fully control.
+sweep? Delete that folder, plus the small settings folder `~/.markwell/` —
+both are ordinary folders you fully control.
 
 ## Why
 
