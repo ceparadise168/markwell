@@ -431,9 +431,11 @@ mark { background: var(--marker-strong); color: var(--ink); padding: 0 .08em; bo
 .hl { margin: 0 0 18px; padding: 2px 0 2px 20px; border-left: 3px solid var(--accent-soft); }
 .hl .text { font-family: var(--font-read); font-size: 1.16rem; line-height: 1.62;
   color: var(--ink); }
-.hl .note { margin-top: 11px; padding: 11px 14px; border-radius: var(--r-sm);
+/* "your note" block — one look wherever a note rides its highlight (the book
+   view's list and the Review card; Review adds layout overrides in its section) */
+.hl .note, .review-card .note { margin-top: 11px; padding: 11px 14px; border-radius: var(--r-sm);
   background: var(--surface-2); font-size: .96rem; color: var(--ink-soft); }
-.hl .note b { color: var(--ink); font-weight: 650; }
+.hl .note b, .review-card .note b { color: var(--ink); font-weight: 650; }
 
 /* foot row: date (when present, pushed left) + copy button (always right).
    margin-right:auto on the date keeps the button right-aligned whether or not a
@@ -506,6 +508,60 @@ details.advanced summary { cursor: pointer; color: var(--ink-soft); font-weight:
 .hero details.advanced summary { text-align: center; }
 .hero .fmt-hint { font-size: .85rem; color: var(--ink-faint); max-width: none;
   margin: 8px 0 0; }
+
+/* ---- review (one line a day) ----
+   A single centered quote card in the reading serif. The pick is deterministic
+   per local day (see app.js); the surface stays scoreless on purpose — no
+   streaks, no counters, just the line. */
+.review-toolbar { display: flex; margin-bottom: clamp(20px, 4vw, 34px); }
+.review-filter {
+  font: inherit; font-size: .9rem; font-weight: 550; color: var(--ink-soft);
+  padding: 9px 12px; border-radius: var(--r-sm); cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface);
+  max-width: min(100%, 36ch);
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.review-filter:hover { background: var(--surface-2); color: var(--ink); }
+
+.review-stage { text-align: center; }
+/* the day line above the card: the page .eyebrow, at the hero's ceremony */
+.review-stage .eyebrow { letter-spacing: .14em; font-size: .68rem;
+  margin: 0 0 clamp(14px, 2.5vw, 20px); }
+.review-card {
+  max-width: 720px; margin: 0 auto;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r); box-shadow: var(--shadow-sm);
+  padding: clamp(30px, 5.5vw, 54px) clamp(22px, 5vw, 56px);
+}
+.review-quote { margin: 0; font-family: var(--font-read);
+  font-size: clamp(1.45rem, 3vw, 2.05rem); line-height: 1.6; color: var(--ink);
+  letter-spacing: .003em; text-wrap: balance; }
+/* long passages drop to a book-like size instead of shouting (app.js decides,
+   counting CJK glyphs double) */
+.review-quote.long { font-size: clamp(1.08rem, 2.2vw, 1.38rem); line-height: 1.78; }
+/* the reader's own note: shared look with the book view (see .hl .note);
+   centered as a block, read as text */
+.review-card .note { display: inline-block; text-align: left; max-width: 36em;
+  margin-top: clamp(16px, 3vw, 22px); }
+.review-card .orn { color: var(--ink-faint); font-size: .95rem;
+  margin: clamp(18px, 3.2vw, 26px) 0 12px; }
+.review-cite { font-size: .92rem; color: var(--ink-soft); }
+.review-book { font-family: var(--font-read); font-size: 1.02rem; font-weight: 650;
+  color: var(--ink); }
+.review-date { color: var(--ink-faint); font-style: italic; }
+.review-actions { margin-top: clamp(20px, 3.5vw, 28px); }
+.review-return { margin: 16px 0 0; }
+.review-return .linklike {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 0; background: none; padding: 2px 4px; font: inherit; font-size: .85rem;
+  font-weight: 550; color: var(--ink-soft); cursor: pointer;
+  border-bottom: 1px solid transparent;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+.review-return .linklike[hidden] { display: none; }  /* display above would beat [hidden] */
+.review-return .linklike:hover { color: var(--accent-ink); border-bottom-color: var(--accent); }
+.review-return .linklike svg { width: 14px; height: 14px; fill: none;
+  stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ---- empty / error states ---- */
 .empty { text-align: center; padding: 50px 24px; }

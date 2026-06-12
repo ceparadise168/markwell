@@ -404,6 +404,7 @@ const routes = {
   backup: renderBackup,
   library: renderLibrary,
   book: renderBook,
+  review: renderReview,
   history: renderHistory,
 };
 
@@ -828,7 +829,7 @@ async function renderLibrary() {
 
   if (lib.source_kind === "empty") {
     view.innerHTML = `<div class="wrap">${emptyLibrary()}</div>`;
-    wireEmptyLibrary();
+    wireEmptyState(renderLibrary);
     return;
   }
 
@@ -855,7 +856,7 @@ async function renderLibrary() {
     <div class="results" id="results" hidden></div>
   </div>`;
 
-  wireSampleBanner();
+  wireSampleBanner(renderLibrary);
   const input = document.getElementById("q");
   input.oninput = () => { state.q = input.value; refreshGrid(); };
   maybeRenderHero();   // fills #hero-slot iff no query and the library has highlights
@@ -1012,23 +1013,27 @@ function fallbackCopy(s) {
   document.body.removeChild(ta);
   return ok;
 }
+/* One clipboard cascade for every copy control (book view + Review): async
+   Clipboard API → hidden-textarea fallback → the warm "copy by hand" toast.
+   `done` runs only when the text actually reached the clipboard. */
+function copyText(payload, done) {
+  const fail = () => {
+    if (fallbackCopy(payload)) done();
+    else toast(t("toast.copy_failed"));
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(payload).then(done).catch(fail);
+  } else {
+    fail();
+  }
+}
 function wireCopyButtons(book) {
   const title = book.title || "";
   view.querySelectorAll(".copy").forEach((btn) => {
     btn.onclick = () => {
       const h = book.highlights[Number(btn.dataset.hlidx)];
       if (!h) return;
-      const payload = copyPayload(h.text || "", title);
-      const done = () => copiedFeedback(btn);
-      const fail = () => {
-        if (fallbackCopy(payload)) done();
-        else toast(t("toast.copy_failed"));
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(payload).then(done).catch(fail);
-      } else {
-        fail();
-      }
+      copyText(copyPayload(h.text || "", title), () => copiedFeedback(btn));
     };
   });
 }
@@ -1070,6 +1075,249 @@ function flashHighlight(node) {
   node.animate(
     [{ backgroundColor: "var(--marker)" }, { backgroundColor: "var(--bg)" }],
     { duration: 1500, easing: "ease-out" });
+}
+
+/* ---------- view: Review — one line a day ----------
+   A calm daily-quote surface. The SAME quote holds all day — a deterministic
+   pick (hash of the local date + a library fingerprint), no account, no server
+   state — and tomorrow brings a new one. "Another" draws from a shuffle bag
+   (no repeats until the pool is exhausted); a quiet link returns to today's.
+   Deliberately NO streaks, counters or any other score-keeping: this view is a
+   reading moment, not a habit tracker. */
+
+// djb2 over "dayKey|fingerprint": stable all day, changes tomorrow, and shifts
+// when the library meaningfully changes (book or highlight counts move).
+function djb2(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) { h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; }
+  return h;
+}
+
+function localDayKey() {   // LOCAL date — "today" means the reader's today
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
+
+/* Review state lives at module level so the quote being shown survives the
+   locale re-render (route() re-runs; the pick must not change) and navigation
+   away and back within a session. srcKey notices a source switch and retires
+   state grown on the old library. The bag holds flat-index ENTRIES, so
+   validity is a reference check; bagFlat detects a refetched library (same
+   source name, brand-new objects) whose stale references must be dropped. */
+const review = {
+  srcKey: null,   // the state.source this state belongs to
+  filter: "",     // "" = all books | String(book._idx)
+  mode: "today",  // 'today' (deterministic) | 'random' (drawn from the bag)
+  pick: null,     // the flat entry on stage (identity, not DOM)
+  bag: [],        // entries not yet shown in this shuffle cycle
+  bagFlat: null,  // the state.flat the bag was built from
+};
+
+// What Review draws from: every highlight with text (notes-only rows have
+// nothing to quote), optionally narrowed to one book.
+function reviewPool() {
+  const all = (state.flat || []).filter((h) => h.text.trim());
+  if (review.filter === "") return all;
+  const idx = Number(review.filter);
+  return all.filter((h) => h.bookIdx === idx);
+}
+
+/* Today's pick: hash the day + a whole-library fingerprint, modulo the ACTIVE
+   pool — stable all day (per filter), reshuffled tomorrow or when the library
+   itself changes. Pure function of (date, library, filter): a re-render can
+   only land on the same line. */
+function reviewDailyPick(pool) {
+  const books = (state.lib && state.lib.books) || [];
+  const total = books.reduce((n, b) => n + b.highlights.length, 0);
+  return pool[djb2(localDayKey() + "|" + books.length + ":" + total) % pool.length];
+}
+
+/* Shuffle bag: uniform draws, no repeats until the pool is exhausted. Each
+   refill excludes the quote on screen, so even crossing a cycle boundary never
+   shows the same line twice in a row (a pool of one is the lone exception —
+   that single line is all there is). */
+function drawReviewQuote(pool) {
+  if (!pool.length) return null;
+  if (review.bagFlat !== state.flat) { review.bag = []; review.bagFlat = state.flat; }
+  if (!review.bag.length) review.bag = pool.filter((e) => e !== review.pick);
+  if (!review.bag.length) review.bag = pool.slice();
+  return review.bag.splice(Math.floor(Math.random() * review.bag.length), 1)[0];
+}
+
+/* "2025-03-18" → "March 18, 2025" / 「2025年3月18日」 in the reader's UI locale.
+   Parsed as LOCAL y/m/d on purpose: new Date("2025-03-18") would read UTC
+   midnight and show the previous day west of Greenwich. Unparseable → as-is. */
+function fmtDay(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  if (!m) return String(iso || "");
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return new Intl.DateTimeFormat(currentLocale(), { dateStyle: "long" }).format(d);
+}
+
+// CJK glyphs run about twice as wide as latin ones, so they count double when
+// deciding whether a quote is "long" (and drops to a smaller, book-like size).
+// Ranges: CJK punctuation + kana + han (3000-9FFF), hangul syllables
+// (AC00-D7AF), compatibility ideographs (F900-FAFF), fullwidth forms (FF00-FFEF).
+function quoteLength(s) {
+  const cjk = s.match(/[\u3000-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF\uFF00-\uFFEF]/g);
+  return s.length + (cjk ? cjk.length : 0);
+}
+
+function reviewCardHTML(h) {
+  // literal t() keys (not a key variable) so the i18n harvest test sees both
+  const eyebrow = review.mode === "random" ? t("review.random") : t("review.today");
+  const book = ((state.lib && state.lib.books) || [])[h.bookIdx] || {};
+  const note = h.note
+    ? `<div class="note"><b>${esc(t("book.note_label"))}</b> ${esc(h.note)}</div>` : "";
+  return `<p class="eyebrow">${esc(eyebrow)}</p>
+  <figure class="review-card">
+    <blockquote class="review-quote${quoteLength(h.text) > 160 ? " long" : ""}">${markEmphasis(h.text)}</blockquote>
+    ${note}
+    <div class="orn" aria-hidden="true">❊</div>
+    <figcaption class="review-cite">
+      <span class="review-book">${esc(h.bookTitle)}</span>${
+        book.author ? `<span class="review-author"> — ${esc(book.author)}</span>` : ""}${
+        h.date ? `<span class="review-date"> · ${esc(fmtDay(h.date))}</span>` : ""}
+    </figcaption>
+  </figure>`;
+}
+
+/* (Re)paint the stage from module state: validate the pick, render the card,
+   sync the back-to-today link and the open button's aria target. `announce` is
+   true only for user-driven quote changes (shuffle / back / filter) — never on
+   the initial render or a locale re-render, where nothing new happened. */
+function updateReviewStage(announce) {
+  const pool = reviewPool();
+  // a refetched library leaves a dangling random pick: fall back to today's
+  if (review.mode === "random" && pool.indexOf(review.pick) < 0) {
+    review.mode = "today";
+    review.pick = null;
+  }
+  const h = review.mode === "random" ? review.pick : reviewDailyPick(pool);
+  if (!h) return;   // can't happen while the stage is on screen; never crash on it
+  review.pick = h;
+  const swap = document.getElementById("review-swap");
+  if (swap) swap.innerHTML = reviewCardHTML(h);
+  const back = document.getElementById("review-today");
+  if (back) {
+    const hadFocus = document.activeElement === back;
+    back.hidden = review.mode !== "random";
+    // don't strand keyboard focus when the just-clicked link hides itself
+    if (back.hidden && hadFocus) {
+      const another = document.getElementById("review-another");
+      if (another) another.focus();
+    }
+  }
+  const open = document.getElementById("review-open");
+  if (open) open.setAttribute("aria-label", t("library.open_book_aria", { title: h.bookTitle }));
+  if (announce) {
+    const sr = document.getElementById("review-sr");
+    if (sr) sr.textContent = h.text;
+  }
+}
+
+// the hero's fade rhythm applied to the stage; skipped under reduced motion
+function swapReviewStage(announce) {
+  const box = document.getElementById("review-swap");
+  if (prefersReducedMotion() || !box) { updateReviewStage(announce); return; }
+  box.style.transition = "opacity var(--dur-mid)";
+  box.style.opacity = "0";
+  setTimeout(() => {
+    updateReviewStage(announce);
+    box.style.opacity = "1";
+  }, prefersReducedMotion() ? 0 : 200);
+}
+
+async function renderReview() {
+  await loadStatus();
+  const lib = await loadLibrary(resolveSource());
+
+  // a source switch retires everything grown on the old library
+  if (review.srcKey !== state.source) {
+    review.srcKey = state.source;
+    review.filter = "";
+    review.mode = "today";
+    review.pick = null;
+    review.bag = [];
+  }
+
+  const all = (state.flat || []).filter((h) => h.text.trim());
+  if (lib.source_kind === "empty" || !all.length) {
+    view.innerHTML = `<div class="wrap">${emptyStateHTML(t("review.empty_title"), t("review.empty_body"))}</div>`;
+    wireEmptyState(renderReview);
+    return;
+  }
+
+  // a stale filter (its book gone after a refetch) falls back to every book
+  if (review.filter !== "" && !all.some((h) => String(h.bookIdx) === review.filter)) {
+    review.filter = "";
+  }
+
+  // the book filter offers only books that can yield a quote, shelved in the
+  // Library's order (most-highlighted first, then title)
+  const inPool = new Set(all.map((h) => h.bookIdx));
+  const books = (lib.books || []).filter((b) => inPool.has(b._idx))
+    .sort((a, b) => b.highlights.length - a.highlights.length
+      || (a.title || "").localeCompare(b.title || ""));
+  const options = books.map((b) =>
+    `<option value="${b._idx}"${String(b._idx) === review.filter ? " selected" : ""}>${esc(b.title)}</option>`).join("");
+
+  view.innerHTML = `<div class="wrap">
+    ${lib.source_kind === "sample" ? sampleBanner() : ""}
+    <h1 class="page-title">${esc(t("review.heading"))}</h1>
+    <p class="page-sub">${esc(t("review.sub"))}</p>
+    <div class="review-toolbar">
+      <select class="review-filter" id="review-filter" aria-label="${esc(t("review.filter_aria"))}">
+        <option value="">${esc(t("book.all_books"))}</option>${options}
+      </select>
+    </div>
+    <section class="review-stage reveal">
+      <div id="review-swap"></div>
+      <div class="btn-row center review-actions">
+        <button class="btn" id="review-copy" type="button" aria-label="${esc(t("book.copy_aria"))}">${ICON.copy}<span>${esc(t("book.copy"))}</span></button>
+        <button class="btn" id="review-open" type="button">${ICON.book}<span>${esc(t("review.read_in_book"))}</span></button>
+        <button class="btn" id="review-another" type="button">${ICON.refresh}<span>${esc(t("review.another"))}</span></button>
+      </div>
+      <p class="review-return">
+        <button class="linklike" id="review-today" type="button" hidden>${ICON.back}<span>${esc(t("review.back_to_today"))}</span></button>
+      </p>
+      <span id="review-sr" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
+    </section>
+  </div>`;
+
+  wireSampleBanner(renderReview);
+  document.getElementById("review-filter").onchange = (e) => {
+    review.filter = e.currentTarget.value;
+    review.mode = "today";        // a fresh scope opens on ITS today's quote
+    review.pick = null;
+    review.bag = [];
+    swapReviewStage(true);
+  };
+  const copyBtn = document.getElementById("review-copy");
+  copyBtn.onclick = () => {
+    const h = review.pick;
+    if (h) copyText(copyPayload(h.text, h.bookTitle), () => copiedFeedback(copyBtn));
+  };
+  document.getElementById("review-open").onclick = () => {
+    const h = review.pick;
+    if (h) jumpToHighlight(h.bookIdx, h.hlIdx);
+  };
+  document.getElementById("review-another").onclick = () => {
+    const next = drawReviewQuote(reviewPool());
+    if (!next) return;
+    review.mode = "random";
+    review.pick = next;
+    swapReviewStage(true);
+  };
+  document.getElementById("review-today").onclick = () => {
+    review.mode = "today";
+    review.pick = null;
+    swapReviewStage(true);
+  };
+
+  updateReviewStage(false);
+  revealAll(view.querySelectorAll(".review-stage.reveal"));
 }
 
 /* ---------- view: History ----------
@@ -1249,23 +1497,30 @@ function wireFmt() {
   });
 }
 
-/* ---------- empty / sample / error ---------- */
-function emptyLibrary() {
+/* ---------- empty / sample / error ----------
+   The empty state and the sample banner are shared by the Library and Review
+   views. Markup builders take pre-translated strings (so every t() call keeps a
+   literal key for the i18n harvest test); wiring takes the view's own render
+   function, so "try the sample" / "exit sample" re-render the view you're on. */
+function emptyStateHTML(title, body) {
   return `<div class="empty">
     <div class="art"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M10 14h18l4 4h22v34H10z"/><path d="M20 30h24M20 38h24M20 46h14"/></svg></div>
-    <h2>${esc(t("library.empty_title"))}</h2>
-    <p>${esc(t("library.empty_body"))}</p>
+    <h2>${esc(title)}</h2>
+    <p>${esc(body)}</p>
     <div class="btn-row center">
       <a class="btn btn-primary" href="#/backup">${ICON.down}<span>${esc(t("backup.cta"))}</span></a>
       <button class="btn" id="try-sample">${ICON.book}<span>${esc(t("library.try_sample"))}</span></button>
     </div>
   </div>`;
 }
-function wireEmptyLibrary() {
+function emptyLibrary() {
+  return emptyStateHTML(t("library.empty_title"), t("library.empty_body"));
+}
+function wireEmptyState(rerender) {
   const b = document.getElementById("try-sample");
   if (b) b.onclick = () => {
     switchSource("sample");
-    renderLibrary();
+    rerender();
   };
 }
 
@@ -1279,11 +1534,11 @@ function sampleBanner() {
     </div>
   </div>`;
 }
-function wireSampleBanner() {
+function wireSampleBanner(rerender) {
   const b = document.getElementById("exit-sample");
   if (b) b.onclick = () => {
     switchSource("latest");
-    renderLibrary();
+    rerender();
   };
 }
 
