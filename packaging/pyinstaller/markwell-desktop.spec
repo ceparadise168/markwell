@@ -70,6 +70,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="Markwell",
+    icon=str(Path(SPECPATH) / "Markwell.ico"),  # Windows .exe icon; ignored on non-Windows
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -97,7 +98,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="Markwell.app",
-        icon=None,
+        icon=str(Path(SPECPATH) / "Markwell.icns"),
         bundle_identifier="io.github.ceparadise168.markwell",
         info_plist={
             "CFBundleName": "Markwell",
