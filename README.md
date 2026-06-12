@@ -36,9 +36,12 @@ Markwell is free software and the downloads carry no code-signing
 certificate, so your operating system asks for one extra confirmation the
 first time:
 
-- **macOS** — right-click (or Control-click) **Markwell** and choose
-  **Open**, then click **Open** in the dialog. macOS remembers your answer,
-  so this is only needed once.
+- **macOS (Sonoma / macOS 14 and earlier)** — right-click (or Control-click)
+  **Markwell** and choose **Open**, then click **Open** in the dialog. macOS
+  remembers your answer, so this is only needed once.
+- **macOS (Sequoia / macOS 15 and later)** — the right-click route is gone:
+  open **Markwell** once (it will be blocked), then go to **System Settings →
+  Privacy & Security** and click **Open Anyway**.
 - **Windows** — when the SmartScreen window appears, click **More info**,
   then **Run anyway**.
 
@@ -264,6 +267,13 @@ rules, [CHANGELOG.md](CHANGELOG.md) for what's changed, and
 Built and maintained by Eric Tu ([@ceparadise168](https://github.com/ceparadise168))
 — ceparadise168@gmail.com. Markwell is free, with no donations accepted for now —
 if it helped you preserve your reading, star the repo and share a quote card.
+
+## Acknowledgments
+
+Markwell exists because **Kobo** keeps your highlights in an open, accessible
+format — a standard SQLite database you can read straight off the device over
+USB — and takes a refreshingly reader- and developer-friendly approach. Thank
+you to Kobo and [@kobolabs](https://github.com/kobolabs).
 
 ## License
 
