@@ -7,6 +7,7 @@
 [![CI](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml/badge.svg)](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/ceparadise168/markwell/total)](https://github.com/ceparadise168/markwell/releases)
 [![PyPI](https://img.shields.io/pypi/v/markwell)](https://pypi.org/project/markwell/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/markwell)](https://pypistats.org/packages/markwell)
 
 Safely back up, read, and export your [Kobo](https://www.kobo.com/) highlights
 and notes — readable pages in your browser, plus Markdown, JSON, CSV, Anki
@@ -127,6 +128,10 @@ too: the scaffolding of the Markdown and HTML files — titles, counts, table
 headers — is written in your language. The app passes your interface language
 along automatically; the command line takes `--lang en|zh-TW|ja|ko`. Your
 highlights and notes themselves are always verbatim, never translated.
+
+CSV and Anki column headers (and JSON keys) deliberately stay English: they
+are machine-facing identifiers, and tools like Notion or Anki map fields by
+those exact names — translating them would break every import recipe.
 
 ## Back up to your cloud
 

@@ -7,6 +7,7 @@
 [![CI](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml/badge.svg)](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/ceparadise168/markwell/total)](https://github.com/ceparadise168/markwell/releases)
 [![PyPI](https://img.shields.io/pypi/v/markwell)](https://pypi.org/project/markwell/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/markwell)](https://pypistats.org/packages/markwell)
 
 [Kobo](https://www.kobo.com/) のハイライトとメモを安全にバックアップして、
 読んで、書き出せます。ブラウザでそのまま読めるページに加えて、Markdown・
@@ -130,6 +131,10 @@ markwell-gui          # または:  python3 -m markwell.gui
 があなたの言語で書かれます。アプリはインターフェイスの言語を自動で引き継ぎ、
 コマンドラインでは `--lang en|zh-TW|ja|ko` で指定します。ハイライトとメモ
 そのものは常に原文のまま。翻訳されることはありません。
+
+CSV と Anki の列見出し（および JSON のキー）は意図的に英語のままです。
+これらは機械向けの識別子で、Notion や Anki はこの名前でフィールドを対応
+させるため、翻訳するとインポートの手順が壊れてしまいます。
 
 ## クラウドにバックアップ
 

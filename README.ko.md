@@ -7,6 +7,7 @@
 [![CI](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml/badge.svg)](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/ceparadise168/markwell/total)](https://github.com/ceparadise168/markwell/releases)
 [![PyPI](https://img.shields.io/pypi/v/markwell)](https://pypi.org/project/markwell/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/markwell)](https://pypistats.org/packages/markwell)
 
 [Kobo](https://www.kobo.com/) 하이라이트와 메모를 안전하게 백업하고, 읽고,
 내보낼 수 있습니다. 브라우저에서 바로 읽는 페이지와 함께 Markdown, JSON,
@@ -131,6 +132,10 @@ Markdown과 HTML 파일의 골격 — 제목, 개수, 표 머리글 — 이 내 
 적힙니다. 앱은 인터페이스 언어를 자동으로 전달하고, 명령줄에서는
 `--lang en|zh-TW|ja|ko`로 지정합니다. 하이라이트와 메모 자체는 언제나 원문
 그대로이며, 절대 번역되지 않습니다.
+
+CSV와 Anki의 열 이름(그리고 JSON 키)은 일부러 영어로 둡니다. 기계가 읽는
+식별자라서 Notion이나 Anki 같은 도구가 이 이름으로 필드를 맞추기 때문에,
+번역하면 모든 가져오기 절차가 깨집니다.
 
 ## 내 클라우드에 백업
 

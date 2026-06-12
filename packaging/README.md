@@ -56,6 +56,10 @@ After building, launch the app from `dist/`:
 Releases are tag-driven and preflight-gated; desktop artifacts land in a
 **draft** GitHub release for review before anything goes public.
 
+0. One-time, before the first release: flip the repository to **public**
+   (GitHub → Settings → Danger Zone → Change visibility). Outward-facing and
+   irreversible — **Eric 手動**.
+
 1. Check that `version` in `pyproject.toml` matches the tag you are about to
    cut (`0.2.0` → `v0.2.0`), then push the tag:
 

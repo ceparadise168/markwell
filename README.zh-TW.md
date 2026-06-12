@@ -7,6 +7,7 @@
 [![CI](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml/badge.svg)](https://github.com/ceparadise168/markwell/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/ceparadise168/markwell/total)](https://github.com/ceparadise168/markwell/releases)
 [![PyPI](https://img.shields.io/pypi/v/markwell)](https://pypi.org/project/markwell/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/markwell)](https://pypistats.org/packages/markwell)
 
 安全地備份、閱讀並匯出你的 [Kobo](https://www.kobo.com/) 劃線與筆記——在瀏覽器
 裡直接閱讀，另有 Markdown、JSON、CSV、Anki 字卡，以及可列印的 HTML 書櫃。一切
@@ -115,6 +116,10 @@ markwell-gui          # 或：python3 -m markwell.gui
 被記住。匯出檔也在地化：Markdown 與 HTML 檔案的框架文字——標題、數量、
 表頭——用你的語言書寫。App 會自動帶上你的介面語言；命令列則用
 `--lang en|zh-TW|ja|ko` 指定。你的劃線和筆記本身永遠原文照錄，絕不翻譯。
+
+CSV 與 Anki 的欄位名稱（以及 JSON 的鍵）刻意保留英文：它們是給機器看的
+識別字，Notion、Anki 這類工具靠這些名稱對應欄位——翻譯了反而會弄壞所有
+匯入流程。
 
 ## 備份到你的雲端
 
