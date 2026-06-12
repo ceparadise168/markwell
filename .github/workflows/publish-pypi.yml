@@ -1,0 +1,58 @@
+# Publishes markwell to PyPI when a GitHub release is published (i.e. after
+# Eric reviews and publishes the draft created by release.yml).
+#
+# Uses PyPI Trusted Publishing (OIDC): the id-token permission below is the
+# whole credential story — there are NO API-token secrets anywhere. One-time
+# publisher registration on pypi.org is documented in packaging/README.md.
+
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build, gate, and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # PyPI Trusted Publishing (OIDC); no secrets involved
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build sdist and wheel
+        run: pipx run build
+
+      # HARD GATE: exit 1 fails the job before anything reaches PyPI.
+      # Gate both the dist/ tree itself and the unpacked wheel contents
+      # (the wheel is what ends up on readers' machines).
+      - name: Privacy preflight (hard gate)
+        run: |
+          python packaging/preflight.py dist
+          mkdir wheel-unpacked
+          python -m zipfile -e dist/*.whl wheel-unpacked
+          python packaging/preflight.py wheel-unpacked
+
+      # Install the built wheel and import it from a neutral directory —
+      # cd away from the repo root so the local markwell/ source tree
+      # cannot shadow the installed package.
+      - name: Sanity-check the wheel
+        run: |
+          python -m pip install dist/*.whl
+          cd "$RUNNER_TEMP"
+          python -c "import markwell; print('markwell', markwell.__version__)"
+
+      # Publishes everything in dist/ (the default packages-dir).
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
