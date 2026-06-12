@@ -31,11 +31,24 @@ def test_forbidden_reason_flags_every_category():
     assert f.forbidden_reason("pkg/__pycache__/mod.pyc")
 
 
+def test_forbidden_reason_flags_interrupted_and_packed_data():
+    """PR #1 review: an interrupted backup's .sqlite.tmp is a complete private
+    snapshot, and a Markwell archive packs the whole library — neither may ship."""
+    f = _load_forbidden()
+    assert f.forbidden_reason("a/KoboReader-20260601-101010.sqlite.tmp")
+    assert f.forbidden_reason("a/Markwell-archive-20260612-101010.zip")
+    assert f.forbidden_reason("a/Markwell-archive-20260612-101010.zip.tmp")
+
+
 def test_forbidden_reason_allows_real_app_files():
     f = _load_forbidden()
     assert f.forbidden_reason("markwell/gui/assets/app.js") is None
     assert f.forbidden_reason("markwell/gui/server.py") is None
     assert f.forbidden_reason("Markwell.app/Contents/MacOS/Markwell") is None
+    # release artifacts themselves stay shippable: the archive rule is
+    # name-scoped, never a bare ".zip" or ".tmp" match
+    assert f.forbidden_reason("Markwell-macOS.zip") is None
+    assert f.forbidden_reason("build/scratch.tmp") is None
 
 
 def test_preflight_passes_on_clean_tree(tmp_path):

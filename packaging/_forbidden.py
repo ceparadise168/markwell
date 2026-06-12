@@ -1,7 +1,8 @@
 """Single source of truth for data that must never ship in a release artifact.
 
 Markwell's core promise is local-first privacy, so a release must never bundle a
-reader's Kobo snapshots, exports, backups, SQLite databases, or local caches. The
+reader's Kobo snapshots (finished or interrupted), exports, backups, archives,
+SQLite databases, or local caches. The
 PyInstaller spec (input filter) and the release preflight (output scan) both import
 these definitions from here — a drift between the two would be a privacy hole.
 
@@ -23,12 +24,21 @@ FORBIDDEN_DIR_NAMES = (
     "__pycache__",
 )
 
-# File suffixes that must never appear anywhere in a release tree.
+# File suffixes that must never appear anywhere in a release tree. The .tmp
+# variant matters: an interrupted backup leaves a complete snapshot behind as
+# KoboReader-<stamp>.sqlite.tmp, which is exactly as private as the real thing.
 FORBIDDEN_SUFFIXES = (
     ".sqlite",
     ".sqlite-shm",
     ".sqlite-wal",
+    ".sqlite.tmp",
 )
+
+# The GUI's "pack & go" archive bundles the reader's whole library plus their
+# latest snapshot — name-scoped (never bare ".zip") so release zips like
+# Markwell-macOS.zip stay shippable.
+_ARCHIVE_PREFIX = "markwell-archive-"
+_ARCHIVE_SUFFIXES = (".zip", ".zip.tmp")
 
 
 def forbidden_reason(path) -> str | None:
@@ -41,4 +51,6 @@ def forbidden_reason(path) -> str | None:
     for suffix in FORBIDDEN_SUFFIXES:
         if name.endswith(suffix):
             return "forbidden file type %r" % suffix
+    if name.startswith(_ARCHIVE_PREFIX) and name.endswith(_ARCHIVE_SUFFIXES):
+        return "forbidden file type 'Markwell archive'"
     return None
