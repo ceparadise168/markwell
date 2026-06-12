@@ -68,6 +68,9 @@ def test_app_js_localizes_at_volume():
 # Exact English literals the Task-5 sweep removed from app.js (one per major
 # surface: library, progress phases, device banner, search, CTA, book detail,
 # history, copy toast). Any reappearance = a hardcoded string snuck back in.
+# These mirror specific en values in i18n.js — if you rename one of those
+# strings there, update it here too, or this guard quietly stops covering
+# that surface.
 _ENGLISH_SENTINELS = [
     "Your library",
     "Finding your Kobo",
