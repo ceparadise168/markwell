@@ -255,7 +255,7 @@ pytest
 ## 메인테이너
 
 Eric Tu([@ceparadise168](https://github.com/ceparadise168))가 만들고
-관리합니다 — ceparadise168@gmail.com. Markwell은 무료이며 당분간 후원을 받지
+관리합니다 — hi@markwell.page. Markwell은 무료이며 당분간 후원을 받지
 않습니다. 당신의 독서를 간직하는 데 도움이 되었다면, 리포지터리에 별을
 남기거나 인용 카드를 공유해 주세요.
 

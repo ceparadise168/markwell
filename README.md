@@ -279,7 +279,7 @@ rules, [CHANGELOG.md](CHANGELOG.md) for what's changed, and
 ## Maintainer
 
 Built and maintained by Eric Tu ([@ceparadise168](https://github.com/ceparadise168))
-— ceparadise168@gmail.com. Markwell is free, with no donations accepted for now —
+— hi@markwell.page. Markwell is free, with no donations accepted for now —
 if it helped you preserve your reading, star the repo and share a quote card.
 
 ## Acknowledgments

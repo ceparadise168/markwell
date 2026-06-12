@@ -258,7 +258,7 @@ pytest
 ## メンテナー
 
 Eric Tu（[@ceparadise168](https://github.com/ceparadise168)）が開発・維持して
-います — ceparadise168@gmail.com。Markwell は無料で、当面、寄付は受け付けて
+います — hi@markwell.page。Markwell は無料で、当面、寄付は受け付けて
 いません。あなたの読書を残す役に立ったなら、リポジトリにスターを付けるか、
 引用カードをシェアしていただけたら嬉しいです。
 
