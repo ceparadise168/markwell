@@ -33,9 +33,12 @@
 Markwell 是自由軟體，下載檔沒有程式碼簽署憑證，所以第一次啟動時作業系統會
 多向你確認一次：
 
-- **macOS** — 在 **Markwell** 上按右鍵（或按住 Control 點一下），選擇
-  **打開**，然後在對話框中再按一次**打開**。macOS 會記住你的選擇，這個步驟
-  只需要做一次。
+- **macOS（Sonoma / macOS 14 以前）** — 在 **Markwell** 上按右鍵（或按住
+  Control 點一下），選擇**打開**，然後在對話框中再按一次**打開**。macOS 會
+  記住你的選擇，這個步驟只需要做一次。
+- **macOS（Sequoia / macOS 15 以後）** — 已經沒有右鍵這條路：先打開
+  **Markwell** 一次（會被擋下），再到**系統設定 → 隱私權與安全性**，按
+  **強制打開**。
 - **Windows** — 出現 SmartScreen 視窗時，點選**其他資訊**，再點**仍要執行**。
 
 如果你不想執行未簽署的程式，可以改用下面的 Python 套件安裝——同一個 App，
@@ -217,6 +220,12 @@ pytest
 由 Eric Tu（[@ceparadise168](https://github.com/ceparadise168)）打造與維護——
 ceparadise168@gmail.com。Markwell 是免費軟體，目前不接受捐款——如果它幫你
 留住了你的閱讀，歡迎給專案一顆星，或分享一張劃線圖卡。
+
+## 致謝
+
+Markwell 能存在，要謝謝 **Kobo**：他們把你的劃線存成開放、好讀的標準 SQLite
+資料庫，接上 USB 就能直接讀取，對讀者和開發者都很友善。謝謝 Kobo 與
+[@kobolabs](https://github.com/kobolabs)。
 
 ## 授權條款
 
