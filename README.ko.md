@@ -256,9 +256,9 @@ pytest
 ## 메인테이너
 
 Eric Tu([@ceparadise168](https://github.com/ceparadise168))가 만들고
-관리합니다 — hi@markwell.page. Markwell은 무료이며 당분간 후원을 받지
-않습니다. 당신의 독서를 간직하는 데 도움이 되었다면, 리포지터리에 별을
-남기거나 인용 카드를 공유해 주세요.
+관리합니다 — hi@markwell.page. Markwell은 무료이자 오픈소스이며, 앞으로도 계속
+무료입니다. 당신의 독서를 간직하는 데 도움이 되었다면, 리포지터리에 별을
+남기거나, 인용 카드를 공유하거나, [커피 한 잔 ☕](https://ko-fi.com/erictu) 사주세요.
 
 ## 감사의 말
 

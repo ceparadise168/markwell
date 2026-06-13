@@ -280,8 +280,9 @@ rules, [CHANGELOG.md](CHANGELOG.md) for what's changed, and
 ## Maintainer
 
 Built and maintained by Eric Tu ([@ceparadise168](https://github.com/ceparadise168))
-— hi@markwell.page. Markwell is free, with no donations accepted for now —
-if it helped you preserve your reading, star the repo and share a quote card.
+— hi@markwell.page. Markwell is free and open source, and always will be. If it
+helped you preserve your reading, star the repo, share a quote card, or
+[buy me a coffee ☕](https://ko-fi.com/erictu).
 
 ## Acknowledgments
 
