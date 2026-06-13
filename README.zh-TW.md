@@ -231,8 +231,8 @@ pytest
 ## 維護者
 
 由 Eric Tu（[@ceparadise168](https://github.com/ceparadise168)）打造與維護——
-hi@markwell.page。Markwell 是免費軟體，目前不接受捐款——如果它幫你
-留住了你的閱讀，歡迎給專案一顆星，或分享一張劃線圖卡。
+hi@markwell.page。Markwell 是免費的開源軟體，而且永遠都會是。如果它幫你
+留住了你的閱讀，歡迎給專案一顆星、分享一張劃線圖卡，或[請我喝杯咖啡 ☕](https://ko-fi.com/erictu)。
 
 ## 致謝
 
